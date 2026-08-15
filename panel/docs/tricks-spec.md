@@ -114,15 +114,74 @@ deployment without change.
 | `select` | dropdown | an enum field | `set` one field |
 | `lista` | repeats a row per matching note | a `datos` query (same shape as dashboard `query`, plan §5.3) | — |
 | `formulario` | a small input form | — | `crear_nota` (from a template) |
-| `boton` | a single action | — | `set` / `crear_nota` / `archivar` |
+| `boton` | a single action | — | `set` / `crear_nota` / `archivar` / `correr_script` |
 
-Every write action funnels through the same mechanism the dashboard's
-row-actions already use (plan §5.5): read the note's current `content`,
-patch only the relevant piece with `js-yaml`, `PUT` the whole file back.
-No new backend endpoint. Same known limitation carried over honestly, not
-hidden: **plain overwrite, no conflict detection** (plan §5.5, §9) — a
-trick action can clobber a concurrent edit exactly like a dashboard
-action can.
+Every write action (`set`/`crear_nota`/`archivar`) funnels through the
+same mechanism the dashboard's row-actions already use (plan §5.5): read
+the note's current `content`, patch only the relevant piece with
+`js-yaml`, `PUT` the whole file back. Same known limitation carried over
+honestly, not hidden: **plain overwrite, no conflict detection** (plan
+§5.5, §9) — a trick action can clobber a concurrent edit exactly like a
+dashboard action can.
+
+`correr_script` is different in kind, not degree — it runs code on the
+server, not a file write. Its own section below.
+
+## Running a script — `correr_script`
+
+Decided 2026-08-15, when the first trick that needed to shell out (a
+button regenerating a report, not just editing a note) came up.
+
+```yaml
+acciones:
+  - etiqueta: "Generar cierre de este mes"
+    control: boton
+    accion:
+      correr_script:
+        ruta: ".claude/tricks/cierre-financiero-mensual/generar.sh"
+        args: []
+```
+
+### Trust boundary — read this before adding one
+
+This app has **no authentication**. A trick that can run a script is a
+materially bigger trust boundary than one that can only write files —
+"anything on the tailnet can press a button" now means "anything on the
+tailnet can execute code," not just "edit a note." Three constraints, all
+enforced server-side, none optional:
+
+1. **`ruta` must resolve to somewhere under `.claude/tricks/`.** Absolute
+   paths and anything that normalizes outside that directory (`../../`
+   escapes) are rejected before the script ever runs. Chosen scope:
+   **any** script under `.claude/tricks/`, not only the calling trick's
+   own subfolder — a trick can reuse another trick's script. Looser than
+   scoping each trick to its own folder, but still a real, checked
+   boundary: nothing outside `.claude/tricks/` is reachable this way, no
+   matter what a trick's author writes.
+2. **Run via `execFile`, never a shell.** `args` is a fixed array from
+   `trick.yaml`, passed straight to the child process — never
+   concatenated into a shell string, never built from live user input at
+   request time. This is what makes shell injection structurally
+   impossible rather than merely unlikely: there is no shell parsing the
+   argument list, so there is nothing for a crafted argument to break out
+   of.
+3. **A hard timeout**, killing the process if it runs long. A script that
+   hangs must not hang the request that triggered it forever.
+
+### What actually runs, and when the result appears
+
+A manually clicked `boton` runs the script **immediately** and shows the
+result inline — stdout, exit code, success or failure. No proposal queue,
+no approval step: a human clicking the button *is* the approval, the same
+reasoning the scheduling section below already applies to
+`requiere_llm: false` scheduled scripts. If the script writes to a vault
+file, that file updates through the normal filesystem watcher like any
+other change — no special-casing needed.
+
+If a script needs to call Claude (summarizing, judgment calls, anything
+an LLM does that a deterministic script can't), that is **not** a
+`correr_script` action from a button — see `requiere_llm: true` below.
+Manual-click direct execution is for deterministic code only.
 
 ## Scheduling — the part that reopens a closed decision
 

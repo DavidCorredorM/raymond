@@ -58,6 +58,26 @@ Follow the schema in `panel/docs/tricks-spec.md` exactly. Every write
 action (`set`, `crear_nota`, `archivar`) must map to one of the actions
 that schema defines — don't invent new action verbs.
 
+### If the button needs to run code, not just write a file
+
+Some requests aren't "add/edit a note" — "regenerate this report",
+"pull the latest numbers", "rebuild the chart." That's `correr_script`,
+documented in `panel/docs/tricks-spec.md`'s "Running a script" section.
+Read it before using this — it is a materially bigger trust boundary
+than the other actions (this app has no auth; a button that runs code is
+not the same risk as a button that edits a note) and the constraints
+there are not optional:
+
+- The script must live under `.claude/tricks/` — write it into the
+  trick's own folder (`.claude/tricks/<name>/`).
+- Never write a script that constructs a shell command from a variable —
+  `args` in `trick.yaml` is a fixed list, not a template you fill with
+  live input.
+- If the real logic isn't available yet (e.g. it depends on something
+  not yet ported or installed), **write a script that says so clearly and
+  exits cleanly** rather than faking output or leaving the button broken.
+  Tell the user exactly what it's stubbed on.
+
 ## 5. Scheduling — ask before adding, and be honest about the two kinds
 
 If the user wants something automatic ("remind me every morning",
