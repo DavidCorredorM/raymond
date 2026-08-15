@@ -3,7 +3,7 @@ titulo: Índice del vault
 tipo: referencia
 area: meta
 estado: activo
-actualizado: 2026-08-12
+actualizado: 2026-08-15
 etiquetas: [meta]
 cuando-usar: "Empieza aquí. Mapa de todo el vault — léelo antes de buscar a ciegas."
 ---
@@ -16,6 +16,7 @@ cuando-usar: "Empieza aquí. Mapa de todo el vault — léelo antes de buscar a 
 | `notes/` | Atomic evergreen notes. The main body of the vault. |
 | `projects/` | One folder per ongoing project, each with its own `index.md`. |
 | `reference/` | External material worth keeping — docs, specs, saved articles. |
+| `panel/` | Dashboards the web panel renders — files with a `widgets:` frontmatter array. `panel/home.md` is the panel's home page. |
 | `_templates/` | Starting points. Copy, never write frontmatter from scratch. |
 | `_tools/` | `vault-search` (tiered search) and `vault-lint` (health check). |
 | `.claude/skills/` | Skills Claude Code loads here: capture-note, daily-log, vault-health, migrate-notes, trick-creator. |
