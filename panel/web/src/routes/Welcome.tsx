@@ -5,10 +5,10 @@ export function Welcome() {
   const { data } = useNotes();
   return (
     <div className="welcome">
-      <h1>ben</h1>
+      <h1>Vault</h1>
       <p className="muted">
         {data ? `${data.length} notes indexed.` : "Loading…"} Pick a note from the tree, or open{" "}
-        <Link to="/health">vault health</Link>.
+        <Link to="/vault/graph">the graph</Link> or <Link to="/vault/health">vault health</Link>.
       </p>
     </div>
   );
