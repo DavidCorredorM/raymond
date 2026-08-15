@@ -1,11 +1,13 @@
-# Ben
+# Raymond
 
 A personal Claude Code appliance: bare hardware → Ubuntu → a private
 Obsidian-compatible vault → Claude Code with a seeded set of skills → a
 web panel to see and edit it all over Tailscale. Meant to be deployed by
 different people on their own machines, each with their own vault.
 
-Was two repos (`obsidian-server`, `second-brain-panel`) until 2026-08-15
+Named for Rain Man's Raymond — a quiet, always-on savant living in the
+background. Was called Ben until 2026-08-15, and before that two repos
+(`obsidian-server`, `second-brain-panel`) until the same day
 — merged because it's one project, not two.
 
 ## Layout

@@ -1,6 +1,6 @@
 # panel
 
-The web UI half of [Ben](../README.md). Reads, edits, and renders
+The web UI half of [Raymond](../README.md). Reads, edits, and renders
 dashboards from plain files — no database, no state that isn't on disk.
 See `docs/frontend-implementation-plan.md` for the build plan.
 

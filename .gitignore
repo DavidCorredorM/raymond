@@ -13,3 +13,4 @@ panel/*/dist/
 *.log
 .env
 .env.*
+.claude/worktrees/

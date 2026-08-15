@@ -37,7 +37,7 @@ If not, create a key on the Mac (skip if `~/.ssh/id_ed25519` exists) and
 copy it across:
 
 ```sh
-ssh-keygen -t ed25519 -C "ben"
+ssh-keygen -t ed25519 -C "raymond"
 ssh-copy-id <USERNAME>@<SERVER_IP>
 ```
 

@@ -1,10 +1,10 @@
 ---
-scope: Ben, the base package (this repo, including panel/), not any single deployment
+scope: Raymond, the base package (this repo, including panel/), not any single deployment
 ---
 
 # Roadmap — deferred base-package work
 
-Decisions and gaps that apply to Ben generically, deferred rather than
+Decisions and gaps that apply to Raymond generically, deferred rather than
 lost. Not Angela-specific — anything about her vault's content or her
 SIGRA skills lives in her deployment, not here.
 
