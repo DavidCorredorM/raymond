@@ -49,3 +49,29 @@ Still not designed:
 - Conflict resolution — the plan explicitly leaves this out of phase 1;
   writes are full-file overwrites with no ETag, so two tabs editing the
   same note will clobber each other
+
+## 8. Field names are English in prose, Spanish in the one field that matters
+
+`vault-template/CLAUDE.md` and its tools (`vault-lint`, `vault-search`,
+`linkcheck.py`, the panel's `/api/health/vault`) are written in English
+but all hardcode **`cuando-usar`** — Spanish — as the retrieval-key field
+name, because that's what got built and verified against Angela's real
+vault. A fresh English-language deployment inherits a Spanish field name
+with no indication why.
+
+Found and partially fixed 2026-08-15: `vault-template/CLAUDE.md` had
+Angela's specific `companies/icpp/`, `companies/sigra/` structure
+hardcoded as if it were the generic default, and the shipped
+`panel/home.md` was in Spanish prose. Both fixed — the structure section
+is now generic guidance rather than one deployment's actual folders, and
+`home.md`'s prose is English. The field-name coupling itself (documented
+in an earlier log entry as "the abstraction is deliberately not built
+yet") was not — fixing it means either parameterizing every tool's field
+name or shipping two schema variants, and doing that correctly needs more
+than the time available in the pass that found it.
+
+Until fixed: **any new deployment inherits `cuando-usar` as the literal
+field name**, regardless of the vault's language. Rename it consistently
+across `_templates/`, `_tools/*`, and `panel/server/src/index.ts`'s
+health check if a deployment wants a different name — same instruction
+as before, now written down instead of only implied.

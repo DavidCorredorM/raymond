@@ -1,37 +1,37 @@
 ---
-titulo: Inicio
+titulo: Home
 tipo: referencia
 area: meta
 estado: activo
 actualizado: 2026-08-15
 etiquetas: [meta]
-cuando-usar: "La página de inicio del panel — ábrela para ver notas recientes y la salud del vault de un vistazo."
+cuando-usar: "The panel's home page — open it to see recent notes and vault health at a glance."
 widgets:
   - kind: vault-health
-    title: "Salud del vault"
+    title: "Vault health"
     params: {}
   - kind: query
-    title: "Notas recientes"
+    title: "Recent notes"
     params:
       sort: { field: mtime, order: desc }
       limit: 10
       columns: [title, frontmatter.tipo, frontmatter.actualizado]
   - kind: count
-    title: "Notas activas"
+    title: "Active notes"
     params:
       frontmatter:
         estado: activo
 ---
 
-# Inicio
+# Home
 
-Este archivo es el dashboard que el panel muestra en `/` — un archivo
-normal, editable como cualquier otro. Bórralo, muévelo o cambia sus
-widgets sin tocar código; el panel solo busca un arreglo `widgets:` en el
-frontmatter.
+This file is the dashboard the panel shows at `/` — a normal file,
+editable like any other. Delete it, move it, or change its widgets
+without touching code; the panel only looks for a `widgets:` array in
+the frontmatter.
 
-¿Quieres una vista interactiva para algo que vas a trackear o gestionar
-seguido — una lista de tareas, un hábito, un formulario? Eso es un
-**trick**, no un dashboard. Ábrelo con Claude Code y descríbelo en texto
-plano; la skill `trick-creator` escribe la carpeta por ti. No hay UI para
-crearlos a mano — se hacen por chat.
+Want an interactive view for something you'll track or manage often — a
+todo list, a habit, a form? That's a **trick**, not a dashboard. Open
+Claude Code and describe it in plain language; the `trick-creator` skill
+writes the folder for you. There's no UI for creating them by hand —
+they're made through chat.

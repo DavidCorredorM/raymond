@@ -126,35 +126,30 @@ gets trusted later.
 
 ## Structure
 
-Two companies under one holding. They stay separate but can link to each
-other — that is the whole reason for one vault instead of two.
-
 ```
 vault/
-├── CLAUDE.md         this file — holding-level rules
+├── CLAUDE.md         this file
 ├── index.md          map of the whole vault
-├── companies/
-│   ├── icpp/         + its own CLAUDE.md for company-specific context
-│   └── sigra/        + its own CLAUDE.md
-├── holding/          cross-company: shared people, decisions, strategy
-├── panel/            dashboards, rendered by the web panel
-├── daily/            dated logs, append-only
-├── notes/            atomic evergreen notes
-├── reference/        external material worth keeping
+├── panel/            dashboards, rendered by the web panel — see below
+├── daily/             dated logs, append-only
+├── notes/             atomic evergreen notes
+├── projects/          one folder per ongoing project
+├── reference/          external material worth keeping
 ├── attachments/
-├── _templates/       note and index templates
-├── _tools/           vault-search, vault-lint
-└── .claude/          skills — shared across both companies
+├── _templates/        note and index templates
+├── _tools/            vault-search, vault-lint
+└── .claude/
+    ├── skills/         Claude Code skills — see below
+    └── tricks/         skill + UI plugins the panel renders — see below
 ```
 
-**Every note carries `company:`** — `icpp`, `sigra`, or `holding`. That
-field, not the folder, is what the panel filters on, so a single
-dashboard can show both companies or either one.
-
-A note belongs in `holding/` when it is genuinely about both. The test:
-if updating it for one company would require updating a near-copy for the
-other, it is a holding note. Mirror-maintenance across two files is the
-problem this structure exists to remove.
+This is a starting shape, not a fixed one. If your vault covers more than
+one distinct area — several companies, several separate projects that
+never reference each other — a common pattern is grouping each under its
+own top-level folder with its own `CLAUDE.md` for area-specific context,
+plus a shared field in every note's frontmatter (e.g. `area:` or
+`company:`) that the panel's dashboards can filter on. Restructure into
+that once the need is real; don't build it up front.
 
 Folders, tags and links each have exactly one job:
 
@@ -231,3 +226,51 @@ form, button) — they never ship custom rendering code. That's
 deliberate: this app has no auth, and rendering arbitrary JavaScript
 that anything on the tailnet can write is a materially bigger risk than
 rendering arbitrary markdown.
+
+## The panel
+
+There is a web UI over this vault, reachable on the tailnet. It reads
+and writes the same files you do — it has no database and no state you
+can't see by reading the vault directly. Three destinations:
+
+- **Home** (`/`) — a dashboard. Renders whatever `panel/home.md` says to.
+  Ships with a default; a user or an agent can edit or replace it like
+  any other file.
+- **Vault** — browse notes (folder tree), a force-directed link graph,
+  and a health page (broken links, missing frontmatter).
+- **Tricks** — renders whatever is in `.claude/tricks/`.
+
+**Any `.md` file whose frontmatter has a `widgets:` array is a
+dashboard**, rendered wherever it's opened in the panel, not just at
+`panel/home.md`. Widget kinds today: `query` (a filtered, sorted table of
+notes), `count`, `vault-health`. Example:
+
+```yaml
+---
+widgets:
+  - kind: count
+    title: "Open items"
+    params:
+      frontmatter: { estado: activo }
+  - kind: query
+    title: "Recent"
+    params:
+      sort: { field: mtime, order: desc }
+      limit: 5
+      columns: [title, frontmatter.actualizado]
+---
+```
+
+`params.frontmatter` keys must match whatever field names this vault's
+notes actually use — the panel makes no assumption about field names or
+language. Full spec, including `folder`/`frontmatter_exists`/`sort` and
+worked examples: `panel/docs/frontend-implementation-plan.md` §5.
+
+When a user asks to "see X" or "track Y" or wants a dashboard for
+something, this is the mechanism — write the file, no code, no deploy.
+Notes are editable directly in the panel (raw markdown, no formatting
+hidden), by you in a session here, or by Obsidian if the vault is synced
+there — the panel's editor is a plain source editor, not a
+WYSIWYG one. There is no agent-facing API: you make a dashboard, a
+trick, or anything else the panel shows by writing a file, same as
+everything else in this vault.
