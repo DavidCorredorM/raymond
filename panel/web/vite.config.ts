@@ -1,12 +1,15 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-// Relative asset paths (`base: "./"`) so the built dist/ drops into the
-// intended production shape: served by the same Fastify process as the
-// API, at whatever path prefix that ends up mounted under. See
+// Root-relative asset paths: the built dist/ is served from the root of
+// the same Fastify process that serves the API (server/src/index.ts),
+// not from a sub-path. Was `base: "./"` (relative) until 2026-08-15 —
+// relative paths resolve against the *current URL*, so a hard reload or
+// deep link on a nested client-side route (e.g. /vault/graph) looked for
+// assets at /vault/assets/... instead of /assets/..., 404ing. See
 // panel/docs/frontend-implementation-plan.md §1 and §6.1.
 export default defineConfig({
-  base: "./",
+  base: "/",
   plugins: [react()],
   server: {
     proxy: {
