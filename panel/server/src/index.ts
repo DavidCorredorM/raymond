@@ -239,7 +239,7 @@ app.get("/api/attachments", async () =>
  * `correr_script`. `nosniff` is what stops a browser from deciding for
  * itself that our `application/octet-stream` is really HTML.
  */
-app.get<{ Querystring: { path?: string } }>(
+app.get<{ Querystring: { path?: string; download?: string } }>(
   "/api/attachment",
   async (req, reply) => {
     if (!req.query.path) return reply.code(400).send({ error: "path required" });
@@ -269,21 +269,49 @@ app.get<{ Querystring: { path?: string } }>(
       return reply.code(404).send({ error: "not found" });
     }
 
-    const policy = servePolicy(rel);
+    const policy = servePolicy(rel, req.query.download === "1");
     reply
       .header("Content-Type", policy.contentType)
       .header("Content-Disposition", policy.disposition)
-      .header("Content-Length", String(size))
-      .header("X-Content-Type-Options", "nosniff");
-    if (!policy.inline) {
-      // Belt and braces for everything not on the inline allowlist: even
-      // if a future change got the Content-Type wrong, an opaque-origin
-      // sandbox with no permitted sources cannot script this origin.
-      // Not applied to the inline branch, where it would break the PDF
-      // viewer for no gain — those types cannot script in the first
-      // place, which is exactly why they are on the allowlist.
-      reply.header("Content-Security-Policy", "default-src 'none'; sandbox");
+      .header("X-Content-Type-Options", "nosniff")
+      // Advertised unconditionally: a client decides whether to ask for a
+      // range, and `<video>` only offers a seek bar once it knows it can.
+      .header("Accept-Ranges", "bytes");
+    if (policy.csp) reply.header("Content-Security-Policy", policy.csp);
+
+    // Seeking in a media element is a range request, not a re-download.
+    // Without this a 200 MB screen recording has to arrive in full before
+    // it can be scrubbed, and Safari refuses to play at all — it requires
+    // a 206 for media. Only `bytes=start-end` is honoured; anything
+    // exotic (multipart ranges, suffix-only) falls through to the whole
+    // file, which is a legal answer to any Range request.
+    const match = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range ?? "");
+    if (match && size > 0) {
+      const [, rawStart, rawEnd] = match;
+      const start = rawStart ? Number(rawStart) : 0;
+      const end = rawEnd ? Math.min(Number(rawEnd), size - 1) : size - 1;
+      if (rawStart && start >= size) {
+        // Past the end: 416 must carry the real length or a client can
+        // loop asking for the same impossible range. The Content-Type set
+        // above is the *file's* — sending a JSON error under it makes
+        // Fastify fail to serialize and answer 500, which is how this
+        // branch was found to be broken. Put it back to JSON here.
+        return reply
+          .code(416)
+          .header("Content-Type", "application/json; charset=utf-8")
+          .header("Content-Range", `bytes */${size}`)
+          .send({ error: "range not satisfiable" });
+      }
+      if (start <= end) {
+        return reply
+          .code(206)
+          .header("Content-Range", `bytes ${start}-${end}/${size}`)
+          .header("Content-Length", String(end - start + 1))
+          .send(createReadStream(full, { start, end }));
+      }
     }
+
+    reply.header("Content-Length", String(size));
     return reply.send(createReadStream(full));
   },
 );

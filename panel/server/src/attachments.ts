@@ -75,6 +75,55 @@ const INLINE_TYPES: Record<string, string> = {
   txt: "text/plain; charset=utf-8",
   log: "text/plain; charset=utf-8",
   csv: "text/plain; charset=utf-8",
+  // Audio and video decode in a media element, never as a document, so
+  // they clear the bar above: there is no script and no navigation in a
+  // container format. Real types matter here — a browser refuses to play
+  // `application/octet-stream`.
+  mp3: "audio/mpeg",
+  m4a: "audio/mp4",
+  wav: "audio/wav",
+  ogg: "audio/ogg",
+  oga: "audio/ogg",
+  flac: "audio/flac",
+  aac: "audio/aac",
+  mp4: "video/mp4",
+  m4v: "video/mp4",
+  webm: "video/webm",
+  mov: "video/quicktime",
+  ogv: "video/ogg",
+};
+
+/**
+ * The third tier, added when previewing reports became a requirement:
+ * types that *must* render as a document to be useful, and that can
+ * carry script.
+ *
+ * The allowlist above cannot hold these — that is the whole point of it.
+ * What makes them servable anyway is `Content-Security-Policy: sandbox`,
+ * which drops the response into a **unique opaque origin**. An HTML
+ * report's own charting JavaScript still runs; it just runs somewhere
+ * that is not the panel's origin, so `document.cookie`, `localStorage`,
+ * same-origin `fetch("/api/...")` and any reach into an embedding page
+ * are all unavailable to it. Crucially this is a *response* header, so
+ * it holds for direct navigation to the URL, not only for an iframe the
+ * frontend happened to sandbox correctly — a client-side `sandbox=`
+ * attribute protects the panel's own page and nothing else.
+ *
+ * `allow-scripts` is granted to HTML because reports are generated with
+ * inline JS and would be blank without it. It is **not** granted to SVG:
+ * an SVG needs no script to display, and `<img src=…>` disables script
+ * in SVG regardless, so the strictest policy that still renders is the
+ * right one.
+ *
+ * `allow-same-origin` must never appear here. Combined with
+ * `allow-scripts` it hands the document back its real origin and the
+ * sandbox becomes decoration.
+ */
+const SANDBOXED_TYPES: Record<string, { type: string; csp: string }> = {
+  html: { type: "text/html; charset=utf-8", csp: "sandbox allow-scripts" },
+  htm: { type: "text/html; charset=utf-8", csp: "sandbox allow-scripts" },
+  xhtml: { type: "application/xhtml+xml", csp: "sandbox allow-scripts" },
+  svg: { type: "image/svg+xml", csp: "sandbox" },
 };
 
 export interface ServePolicy {
@@ -82,22 +131,55 @@ export interface ServePolicy {
   /** Full `Content-Disposition` header value, filename included. */
   disposition: string;
   inline: boolean;
+  /** `Content-Security-Policy` value, when this type needs one. */
+  csp?: string;
 }
 
 /**
- * How one attachment may be served. Note both branches set a real
- * `Content-Disposition` — omitting it on the inline branch would leave
+ * How one attachment may be served. Note every branch sets a real
+ * `Content-Disposition` — omitting it on an inline branch would leave
  * the filename to the URL, and omitting it on the download branch is how
  * "it downloads, surely" turns out to have been "it rendered."
+ *
+ * `forceDownload` is the `?download=1` escape hatch: any type at all,
+ * served as bytes to save. It can only ever make the response stricter,
+ * never looser, so it needs no validation of its own.
  */
-export function servePolicy(relPath: string): ServePolicy {
+export function servePolicy(relPath: string, forceDownload = false): ServePolicy {
   const name = relPath.split("/").pop() ?? "download";
   const ext = name.includes(".") ? name.split(".").pop()!.toLowerCase() : "";
+
+  if (forceDownload) {
+    return {
+      contentType: "application/octet-stream",
+      disposition: `attachment; ${dispositionFilename(name)}`,
+      inline: false,
+      csp: "default-src 'none'; sandbox",
+    };
+  }
+
+  const sandboxed = SANDBOXED_TYPES[ext];
+  if (sandboxed) {
+    return {
+      contentType: sandboxed.type,
+      disposition: `inline; ${dispositionFilename(name)}`,
+      inline: true,
+      csp: sandboxed.csp,
+    };
+  }
+
   const inlineType = INLINE_TYPES[ext];
   return {
     contentType: inlineType ?? "application/octet-stream",
     disposition: `${inlineType ? "inline" : "attachment"}; ${dispositionFilename(name)}`,
     inline: Boolean(inlineType),
+    // Belt and braces for everything not on an allowlist: even if a
+    // future change got the Content-Type wrong, an opaque-origin sandbox
+    // with no permitted sources cannot script this origin. Not applied
+    // to the inline branch, where it would break the PDF viewer for no
+    // gain — those types cannot script in the first place, which is
+    // exactly why they are on that allowlist.
+    csp: inlineType ? undefined : "default-src 'none'; sandbox",
   };
 }
 
