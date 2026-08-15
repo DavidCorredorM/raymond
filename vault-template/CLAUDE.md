@@ -203,7 +203,7 @@ links rot.
 
 ## Skills
 
-Four, in `.claude/skills/`. Claude Code loads their descriptions at
+Five, in `.claude/skills/`. Claude Code loads their descriptions at
 startup and fires them when a task matches:
 
 | Skill | Fires when |
@@ -212,6 +212,22 @@ startup and fires them when a task matches:
 | `daily-log` | a session ends |
 | `vault-health` | after an import, or when things feel messy |
 | `migrate-notes` | bringing an existing vault in |
+| `trick-creator` | the user wants a UI for something they'll track or manage regularly |
 
 Keep the total under about a dozen. Every skill costs context whether it
 is used or not.
+
+## Tricks
+
+A **trick** is a skill plus a small UI manifest that the panel renders
+as an interactive mini-app — not just a note, something with buttons,
+checkboxes, forms. Tricks live in `.claude/tricks/<name>/`, separate from
+`.claude/skills/` so the panel can discover them by listing one
+directory. `trick-creator` builds them from a plain-language request.
+Full spec: `panel/docs/tricks-spec.md`.
+
+Tricks compose a fixed set of safe primitives (list, checkbox, date,
+form, button) — they never ship custom rendering code. That's
+deliberate: this app has no auth, and rendering arbitrary JavaScript
+that anything on the tailnet can write is a materially bigger risk than
+rendering arbitrary markdown.

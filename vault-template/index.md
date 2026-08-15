@@ -18,7 +18,8 @@ cuando-usar: "Empieza aquí. Mapa de todo el vault — léelo antes de buscar a 
 | `reference/` | External material worth keeping — docs, specs, saved articles. |
 | `_templates/` | Starting points. Copy, never write frontmatter from scratch. |
 | `_tools/` | `vault-search` (tiered search) and `vault-lint` (health check). |
-| `.claude/skills/` | Skills Claude Code loads here: capture-note, daily-log, vault-health, migrate-notes. |
+| `.claude/skills/` | Skills Claude Code loads here: capture-note, daily-log, vault-health, migrate-notes, trick-creator. |
+| `.claude/tricks/` | Skill + UI plugins the panel renders as mini-apps. Made by `trick-creator`. |
 
 Rules for how to read and write here: `CLAUDE.md`.
 

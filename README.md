@@ -60,6 +60,7 @@ table. Not any one deployment's status — see that deployment's own
 - [x] Panel backend running as a systemd service, correct Obsidian
       link resolution
 - [x] Panel frontend implementation plan written and researched
+- [x] Tricks spec written (skill + UI plugin system) and trick-creator skill seeded
 - [ ] Panel frontend built
 - [ ] Vault sync (Syncthing vs LiveSync) chosen and running
 - [ ] Vault git remote + real off-box backup (`docs/roadmap.md` #5, #6)

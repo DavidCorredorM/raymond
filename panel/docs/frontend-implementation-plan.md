@@ -269,6 +269,13 @@ dashboards) and 2b (ships after, as polish) — everything else confirmed.
 | 4 | `actions` on `query` widgets (frontmatter-field writes) → inbox/proposal dashboards | Phase 3 |
 | 2b | Live-preview decorations (optional, revisit after 3–4 ship) | Phase 2a |
 | 5 | `log-tail` widget for scheduled-job observability | Phase 3 (widget infra), whenever jobs exist |
+| 6 | **Tricks** — skill + UI plugins, see `tricks-spec.md` | Phase 4 (reuses the same query shape and write-action mechanism `actions` establishes) |
+
+Tricks are not a new mechanism bolted on afterward — they reuse the
+`query` widget's filter shape and the row-action write path (§5.5) under
+a different manifest file. Land phase 4 solidly before starting phase 6;
+retrofitting tricks onto a half-finished actions system means building
+the same thing twice.
 
 ---
 
