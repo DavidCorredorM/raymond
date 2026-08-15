@@ -147,7 +147,7 @@ vault/
 ├── _tools/            vault-search, vault-lint
 └── .claude/
     ├── skills/         Claude Code skills — see below
-    ├── tricks/         skill + UI plugins the panel renders — see below
+    ├── tricks/         mini apps the panel renders — see below
     └── jobs/           scheduled jobs: one note + one runner each — see below
 ```
 
@@ -215,7 +215,7 @@ startup and fires them when a task matches:
 | `daily-log` | a session ends |
 | `vault-health` | after an import, or when things feel messy |
 | `migrate-notes` | bringing an existing vault in |
-| `trick-creator` | the user wants a UI for something they'll track or manage regularly |
+| `trick-creator` | the user wants a UI — a tracker, a form, a chart, a button that runs something |
 | `schedule-job` | the user wants something to run on a schedule, or asks what's scheduled |
 
 Keep the total under about a dozen. Every skill costs context whether it
@@ -238,18 +238,33 @@ by hand would choose.
 
 ## Tricks
 
-A **trick** is a skill plus a small UI manifest that the panel renders
-as an interactive mini-app — not just a note, something with buttons,
-checkboxes, forms. Tricks live in `.claude/tricks/<name>/`, separate from
-`.claude/skills/` so the panel can discover them by listing one
-directory. `trick-creator` builds them from a plain-language request.
-Full spec: `panel/docs/tricks-spec.md`.
+A **trick** is a small web app the panel renders over this vault — a
+checklist, a form, a chart, a button that runs a script. It is arbitrary
+HTML, CSS and JavaScript: there is no widget vocabulary to compose and
+nothing a trick "can't be". Tricks live in `.claude/tricks/<name>/`,
+separate from `.claude/skills/` so the panel can discover them by listing
+one directory. `trick-creator` builds them from a plain-language request;
+`.claude/tricks/_plantillas/` holds four working starters to copy. Full
+spec: `panel/docs/tricks-spec.md`.
 
-Tricks compose a fixed set of safe primitives (list, checkbox, date,
-form, button) — they never ship custom rendering code. That's
-deliberate: this app has no auth, and rendering arbitrary JavaScript
-that anything on the tailnet can write is a materially bigger risk than
-rendering arbitrary markdown.
+What makes arbitrary code safe here is *where it runs*. The app is
+mounted in a sandboxed iframe on an opaque origin with **no network of
+its own**, no `localStorage`, no cookies, and no handle on the panel's
+page. Its only route to the vault is a `postMessage` bridge scoped to the
+capabilities its `trick.yaml` declares — one folder, and for writes, one
+named list of frontmatter fields. Anything not declared is denied.
+
+Two things follow that are easy to get wrong:
+
+- **Everything under `.claude/` is executable configuration, not
+  content.** A `trick.yaml` decides what code runs; an `app/` file *is*
+  code. Only someone who can already run code on this machine may write
+  them. No network endpoint may create or modify anything under
+  `.claude/`.
+- **`capacidades:` constrains the browser, not the machine.** A scheduled
+  job feeding the same trick runs with full filesystem access and never
+  touches the bridge. Reading a manifest tells you what the app can
+  reach, not everything the trick does.
 
 ## The panel
 

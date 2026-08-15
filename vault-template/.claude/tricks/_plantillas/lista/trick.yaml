@@ -1,0 +1,30 @@
+# Starter: a checklist over vault notes.
+#
+# Copying this into a real trick means changing THREE things:
+#   1. this folder's name             .claude/tricks/<your-name>/
+#   2. every `carpeta:` below         .claude/tricks/<your-name>/data
+#   3. `titulo`, `descripcion`, `icono`
+# The paths are not derived from the folder name — a trick may read a
+# folder it does not live in — so nothing rewrites them for you.
+
+titulo: "Checklist"
+descripcion: "One note per item. Tick it off in the panel; the note changes on disk."
+icono: "☑️"
+
+app:
+  entrada: "index.html"
+  alto: 420
+
+# The narrowest pair that makes this app work. It can list notes in one
+# folder and change two frontmatter fields on them. It cannot create a
+# note (`crear` defaults to false), cannot touch the body (`cuerpo`
+# defaults to false), cannot read a file whole, cannot run a script, and
+# has no route to anything outside `carpeta`.
+capacidades:
+  vault.query:
+    carpeta: ".claude/tricks/lista/data"
+    frontmatter: { tipo: tarea }
+    limite: 200
+  vault.write:
+    carpeta: ".claude/tricks/lista/data"
+    campos: [estado, actualizado]

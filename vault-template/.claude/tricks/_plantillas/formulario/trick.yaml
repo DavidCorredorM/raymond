@@ -1,0 +1,26 @@
+# Starter: the smallest useful trick — one file, one job.
+#
+# The whole app is app/index.html: markup, styles and script inline. The
+# sandbox's CSP allows inline script deliberately, so a single-file trick
+# is a first-class shape, not a hack. Split into files when the app grows
+# enough that you want to, not because you have to.
+#
+# Copying this means changing `carpeta:` below AND the `CARPETA` constant
+# in app/index.html — the app builds the path it writes to, so the folder
+# is named in two places. Keep them equal.
+
+titulo: "Quick capture"
+descripcion: "A box to type a thing into. Each submission becomes a note."
+icono: "📝"
+
+app:
+  entrada: "index.html"
+  alto: 340
+
+capacidades:
+  vault.write:
+    carpeta: ".claude/tricks/formulario/data"
+    crear: true # without this the app can only edit notes that exist
+    campos: [titulo, tipo, estado, actualizado]
+    cuerpo: true # this app writes the note body, so it must say so
+    max_bytes: 65536

@@ -1,0 +1,37 @@
+# Starter: a read-only view over vault notes, with a chart drawn by hand.
+#
+# The point of this one is what is NOT here. It declares a single
+# capability, it cannot write anything, and the chart is plain SVG the
+# app builds itself — there is no charting library, because there is no
+# network to load one from.
+#
+# Copying this means changing `carpeta:` to the folder you actually want
+# to summarise, and `AGRUPAR_POR` at the top of app/app.js to the
+# frontmatter field you want counted.
+
+titulo: "Notes at a glance"
+descripcion: "Counts notes in one folder by a frontmatter field, and charts them."
+icono: "📊"
+
+app:
+  entrada: "index.html"
+  alto: 400
+
+capacidades:
+  # `vault.query` is folder-scoped and read-only. Pointing it at a normal
+  # vault folder is fine — the ".claude/ only" restriction applies to
+  # vault.write, not to reading. A whole-vault carpeta ("", "." or "/")
+  # is refused at validation time; if you need a wider view than one
+  # folder, a dashboard widget is the right tool, not a trick.
+  vault.query:
+    carpeta: "notes"
+    limite: 500
+
+  # Uncomment if a scheduled job is what keeps this view's data fresh.
+  # The app already feature-detects it: with the capability it prints
+  # "last run 07:04, exit 0" in the header, and without it prints
+  # nothing rather than a broken placeholder. `schedule-job` is what
+  # actually installs the job; this only reads its run table.
+  #
+  # trabajo.estado:
+  #   job: "<JOB_NAME>"

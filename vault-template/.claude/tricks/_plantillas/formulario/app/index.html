@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Quick capture</title>
+    <style>
+      :root {
+        --fondo: #fff;
+        --texto: #1c1c1e;
+        --tenue: #6b7280;
+        --linea: #e5e7eb;
+        --acento: #2563eb;
+        --alerta: #b91c1c;
+        --ok: #15803d;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --fondo: #17181b;
+          --texto: #e8e8ea;
+          --tenue: #9aa0a6;
+          --linea: #2c2e33;
+          --acento: #7aa2f7;
+          --alerta: #f28b82;
+          --ok: #81c995;
+        }
+      }
+      :root[data-tema="claro"] {
+        --fondo: #fff;
+        --texto: #1c1c1e;
+        --tenue: #6b7280;
+        --linea: #e5e7eb;
+        --acento: #2563eb;
+        --alerta: #b91c1c;
+        --ok: #15803d;
+      }
+      :root[data-tema="oscuro"] {
+        --fondo: #17181b;
+        --texto: #e8e8ea;
+        --tenue: #9aa0a6;
+        --linea: #2c2e33;
+        --acento: #7aa2f7;
+        --alerta: #f28b82;
+        --ok: #81c995;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 12px 14px 20px;
+        font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+        color: var(--texto);
+        background: var(--fondo);
+      }
+      label {
+        display: block;
+        margin: 0 0 4px;
+        color: var(--tenue);
+        font-size: 12px;
+      }
+      input,
+      textarea {
+        width: 100%;
+        font: inherit;
+        color: var(--texto);
+        background: transparent;
+        border: 1px solid var(--linea);
+        border-radius: 6px;
+        padding: 7px 9px;
+        margin-bottom: 12px;
+      }
+      textarea {
+        min-height: 90px;
+        resize: vertical;
+      }
+      input:focus,
+      textarea:focus {
+        outline: 2px solid var(--acento);
+        outline-offset: -1px;
+      }
+      button {
+        border: 1px solid var(--acento);
+        background: var(--acento);
+        color: #fff;
+        border-radius: 6px;
+        padding: 7px 14px;
+        font: inherit;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.55;
+        cursor: default;
+      }
+      #aviso {
+        margin: 12px 0 0;
+        font-size: 13px;
+      }
+      #aviso.mal {
+        color: var(--alerta);
+      }
+      #aviso.bien {
+        color: var(--ok);
+      }
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- A <div>, not a <form>. The sandbox has no `allow-forms`, so a
+         real form submission goes nowhere; the button does the work. -->
+    <div>
+      <label for="titulo">What is it?</label>
+      <input id="titulo" type="text" maxlength="120" autocomplete="off" />
+
+      <label for="cuerpo">Anything else (optional)</label>
+      <textarea id="cuerpo" maxlength="4000"></textarea>
+
+      <button id="guardar" type="button">Save as a note</button>
+      <p id="aviso"></p>
+    </div>
+
+    <script>
+      /* The whole app. Inline on purpose — see trick.yaml.
+       *
+       * The bridge client is the same twelve-line handshake every trick
+       * uses, written out here rather than in a bridge.js so this file
+       * stands alone. Copy the fuller bridge.js from the `lista` starter
+       * if this trick grows a second capability.
+       */
+      (function () {
+        // Must match `capacidades.vault.write.carpeta` in trick.yaml.
+        var CARPETA = ".claude/tricks/formulario/data";
+
+        var port = null;
+        var pending = new Map();
+        var seq = 0;
+
+        addEventListener("message", function (ev) {
+          if (ev.source !== window.parent) return;
+          if (!ev.data || ev.data.raymond !== "trick-bridge") return;
+          if (port || !ev.ports || !ev.ports[0]) return;
+          port = ev.ports[0];
+          port.onmessage = function (e) {
+            var m = e.data;
+            if (!m || m.v !== 1 || m.ev) return;
+            var p = pending.get(m.id);
+            if (!p) return;
+            pending.delete(m.id);
+            if (m.ok) p.resolve(m.result);
+            else p.reject(m.error || { code: "internal", message: "refused" });
+          };
+          if (ev.data.tema) document.documentElement.setAttribute("data-tema", ev.data.tema);
+        });
+
+        function call(op, params) {
+          return new Promise(function (resolve, reject) {
+            if (!port) return reject({ code: "no_bridge", message: "the bridge is not connected yet" });
+            var id = "r" + ++seq;
+            pending.set(id, { resolve: resolve, reject: reject });
+            port.postMessage({ v: 1, id: id, op: op, params: params });
+          });
+        }
+
+        var elTitulo = document.getElementById("titulo");
+        var elCuerpo = document.getElementById("cuerpo");
+        var btn = document.getElementById("guardar");
+        var aviso = document.getElementById("aviso");
+
+        btn.addEventListener("click", function () {
+          var titulo = elTitulo.value.trim();
+          if (!titulo) {
+            decir("mal", "Give it a title first — it becomes the filename and the note's titulo.");
+            elTitulo.focus();
+            return;
+          }
+          btn.disabled = true;
+          decir("", "Saving…");
+
+          var path = CARPETA + "/" + nombre(titulo) + ".md";
+          call("vault.write", {
+            path: path,
+            frontmatter: {
+              titulo: titulo,
+              tipo: "captura",
+              estado: "activo",
+              actualizado: hoy(),
+            },
+            cuerpo: elCuerpo.value.trim(),
+          })
+            .then(function () {
+              elTitulo.value = "";
+              elCuerpo.value = "";
+              decir("bien", "Saved as " + path);
+              elTitulo.focus();
+            })
+            .catch(function (err) {
+              decir(
+                "mal",
+                err.code === "capability_denied"
+                  ? "The manifest does not allow that: " + err.message
+                  : err.message || "could not save",
+              );
+            })
+            .then(function () {
+              btn.disabled = false;
+            });
+        });
+
+        /* A filename from the title, plus a short time-based suffix.
+         *
+         * The suffix is not decoration. This trick declares vault.write
+         * and nothing else, so it cannot list the folder to check whether
+         * a name is taken — and a plain overwrite of somebody's earlier
+         * note is the one failure here that loses data. Declaring
+         * vault.query just to avoid a suffix would be a wider capability
+         * bought for a cosmetic gain. */
+        function nombre(titulo) {
+          var base = titulo
+            .toLowerCase()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "") // the accents NFD just split off
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/^-+|-+$/g, "")
+            .slice(0, 60);
+          return (base || "captura") + "-" + Date.now().toString(36).slice(-5);
+        }
+
+        function hoy() {
+          var d = new Date();
+          var p = function (n) {
+            return String(n).padStart(2, "0");
+          };
+          return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
+        }
+
+        function decir(clase, texto) {
+          aviso.className = clase;
+          aviso.textContent = texto;
+        }
+      })();
+    </script>
+  </body>
+</html>

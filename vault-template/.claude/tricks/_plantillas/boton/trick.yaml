@@ -1,0 +1,36 @@
+# Starter: a button that runs a real script, plus the app's own memory.
+#
+# This is the highest trust boundary a trick can reach. Read §11 of
+# panel/docs/tricks-spec.md, or the `correr_script` section of the
+# trick-creator skill, before changing anything under `acciones:`.
+#
+# The rule that makes it safe: the app sends an INDEX, never a path and
+# never an argument. `ruta` and `args` come from the server's own fresh
+# read of this file. A trick's browser code cannot say what runs, only
+# which of the things declared here runs — and only the indices listed
+# in `script.run.acciones`.
+#
+# Copying this means changing `ruta:` to your own trick's folder, and
+# replacing ejemplo.sh with the real work.
+
+titulo: "Run and report"
+descripcion: "Runs a declared script and shows what it printed."
+icono: "▶️"
+
+app:
+  entrada: "index.html"
+  alto: 380
+
+capacidades:
+  script.run:
+    acciones: [0] # indices into `acciones` below — nothing else is runnable
+  estado:
+    max_bytes: 4096 # the app's own scratch file, .../data/estado.json
+
+acciones:
+  - etiqueta: "Run the example script"
+    control: boton
+    accion:
+      correr_script:
+        ruta: ".claude/tricks/boton/ejemplo.sh"
+        args: []

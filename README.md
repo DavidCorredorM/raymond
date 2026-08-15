@@ -122,12 +122,19 @@ Tailscale. Three destinations:
   read/write markdown editor (CodeMirror 6, wiki-link autocomplete, a
   dirty-buffer guard that blocks navigating away from unsaved changes),
   a force-directed link graph, a health report.
-- **Tricks** — skill-plus-UI plugins living in `.claude/tricks/`. A
-  trick composes a fixed, safe vocabulary of primitives (`lista`,
-  `boton`, plus read-only field display) — never arbitrary rendered
-  code, for the same no-auth reason above. `trick-creator` builds them
-  from a plain-language request; a `boton` can run a real, allowlisted
-  server-side script via `correr_script`.
+- **Tricks** — mini apps living in `.claude/tricks/`. A trick is
+  arbitrary HTML, CSS and JavaScript: a checklist, a form, a chart, a
+  drawing pad, a button that runs a script. What makes that safe with no
+  auth is *where* it runs — a sandboxed iframe on an opaque origin, with
+  no network of its own, no storage, and no handle on the panel's page.
+  Its only route to the vault is a `postMessage` bridge scoped to the
+  capabilities its manifest declares, folder by folder and field by
+  field; anything undeclared is denied. `trick-creator` builds them from
+  a plain-language request, starting from the working examples in
+  `vault-template/.claude/tricks/_plantillas/`. The `correr_script`
+  boundary is unchanged and is the strictest thing in the app: the
+  client selects an index, never a path or an argument. Design and the
+  measurements behind it: `panel/docs/tricks-spec.md`.
 
 Twelve API endpoints total, all documented at the top of
 `panel/server/src/index.ts`: notes (list/read/write), attachments

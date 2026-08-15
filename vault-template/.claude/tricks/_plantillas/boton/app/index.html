@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Run and report</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <p id="que">
+      Runs <code>ejemplo.sh</code> on the machine and prints whatever it
+      wrote. Nothing else in this app can start it.
+    </p>
+
+    <div class="fila">
+      <button id="correr" type="button">Run the example script</button>
+      <span id="ultima" class="tenue"></span>
+    </div>
+
+    <p id="error" hidden></p>
+
+    <!-- Script output. A <pre> with textContent, so a script that prints
+         HTML prints HTML — it does not become HTML. -->
+    <pre id="salida" hidden></pre>
+    <p id="nota-salida" class="tenue" hidden></p>
+
+    <script src="bridge.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
