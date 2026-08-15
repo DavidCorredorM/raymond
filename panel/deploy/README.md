@@ -12,11 +12,11 @@ cd server && npm install && npx tsc -p tsconfig.json
 
 ```sh
 mkdir -p ~/.config/systemd/user
-cp deploy/ben-panel.service ~/.config/systemd/user/
+cp deploy/raymond-panel.service ~/.config/systemd/user/
 systemctl --user daemon-reload
-systemctl --user enable --now ben-panel
-systemctl --user status ben-panel
-journalctl --user -u ben-panel -f
+systemctl --user enable --now raymond-panel
+systemctl --user status raymond-panel
+journalctl --user -u raymond-panel -f
 ```
 
 **One sudo step, once:** user services stop when the user logs out unless
@@ -36,7 +36,7 @@ place.
 the shipped file:
 
 ```sh
-systemctl --user edit ben-panel
+systemctl --user edit raymond-panel
 ```
 
 ## Do not expose this publicly

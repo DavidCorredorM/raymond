@@ -5,7 +5,7 @@ Migrate one or more source vaults into a single vault under companies/.
     ./migrate-into-vault.py --target ~/vault-new \
         --source ~/staging/vault-icpp:icpp \
         --source ~/staging/vault-sigra:sigra \
-        --skeleton ~/ben/vault-template
+        --skeleton ~/raymond/vault-template
 
 Non-destructive: sources are copied, never moved. Re-runnable — the target
 is rebuilt from scratch each time unless it contains unexpected content.

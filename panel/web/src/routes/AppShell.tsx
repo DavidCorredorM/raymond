@@ -14,7 +14,7 @@ export function AppShell() {
     <div className="app-shell">
       <header className="app-topbar">
         <NavLink to="/" end className="brand">
-          ben
+          Raymond
         </NavLink>
         <nav className="app-nav">
           <NavLink to="/" end className={navClass}>

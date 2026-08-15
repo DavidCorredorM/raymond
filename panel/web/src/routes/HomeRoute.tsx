@@ -25,7 +25,7 @@ export function HomeRoute() {
   if (noteQuery.isError || !noteQuery.data) {
     return (
       <div className="home-empty page-scroll">
-        <h1>ben</h1>
+        <h1>Raymond</h1>
         <p>
           No dashboard yet at <code>{HOME_DASHBOARD_PATH}</code>. Create a note
           there with a <code>widgets:</code> frontmatter array to make this

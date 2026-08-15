@@ -37,8 +37,8 @@ Deliberately not included:
 ## Run it
 
 ```sh
-git clone <PRIVATE_REPO_URL> ~/ben
-cd ~/ben
+git clone <PRIVATE_REPO_URL> ~/raymond
+cd ~/raymond
 ./scripts/bootstrap.sh
 ```
 
