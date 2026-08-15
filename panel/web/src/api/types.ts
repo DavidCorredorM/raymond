@@ -45,3 +45,19 @@ export interface VaultHealth {
   slugCollisions: SlugCollision[];
   missingFrontmatter: string[];
 }
+
+export interface GraphNode {
+  path: string;
+  title: string;
+}
+
+export interface GraphEdge {
+  from: string;
+  to: string;
+}
+
+/** GET /api/graph — isSystem notes excluded, deduped, no self-loops. */
+export interface GraphResponse {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+}
