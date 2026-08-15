@@ -5,6 +5,7 @@ import { Markdown } from "../markdown/Markdown";
 import { BacklinksPanel } from "../components/BacklinksPanel";
 import { buildSlugIndex } from "../lib/slugIndex";
 import { stripFrontmatter } from "../lib/frontmatter";
+import { DashboardRenderer, isDashboardFrontmatter } from "../dashboards/DashboardRenderer";
 
 function decodePath(splat: string | undefined): string {
   if (!splat) return "";
@@ -43,10 +44,14 @@ export function NoteRoute() {
   }
   const note = noteQuery.data!;
   const frontmatterEntries = Object.entries(note.frontmatter ?? {});
+  // Structural detection only — plan §5.1/§6.3: any note whose
+  // frontmatter has a `widgets` array renders as a dashboard instead of
+  // plain markdown, regardless of where it lives in the tree.
+  const isDashboard = isDashboardFrontmatter(note.frontmatter);
 
   return (
     <div className="note-route">
-      <article className="note-content">
+      <article className={"note-content" + (isDashboard ? " note-content-wide" : "")}>
         <header className="note-header">
           <h1>{note.title}</h1>
           <div className="note-meta">
@@ -71,6 +76,9 @@ export function NoteRoute() {
           )}
         </header>
         <Markdown content={stripFrontmatter(note.content)} slugIndex={slugIndex} />
+        {isDashboard && (
+          <DashboardRenderer widgets={note.frontmatter.widgets} notes={notesQuery.data ?? []} />
+        )}
       </article>
       <BacklinksPanel backlinks={note.backlinks} notes={notesQuery.data ?? []} />
     </div>

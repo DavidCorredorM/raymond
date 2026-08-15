@@ -1,4 +1,4 @@
-/** Vault-relative note path -> a safe `/note/*` route href. */
+/** Vault-relative note path -> a safe `/vault/note/*` route href. */
 export function noteHref(path: string): string {
-  return "/note/" + path.split("/").map(encodeURIComponent).join("/");
+  return "/vault/note/" + path.split("/").map(encodeURIComponent).join("/");
 }

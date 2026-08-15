@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { fetchJSON } from "./client";
-import type { NoteDetail, NoteSummary, VaultHealth } from "./types";
+import type { GraphResponse, NoteDetail, NoteSummary, VaultHealth } from "./types";
 
 /**
  * Poll-based freshness (frontend-implementation-plan.md §7 — the server
@@ -30,6 +30,14 @@ export function useVaultHealth() {
   return useQuery({
     queryKey: ["vault-health"],
     queryFn: () => fetchJSON<VaultHealth>("/api/health/vault"),
+    refetchInterval: POLL_MS,
+  });
+}
+
+export function useGraph() {
+  return useQuery({
+    queryKey: ["graph"],
+    queryFn: () => fetchJSON<GraphResponse>("/api/graph"),
     refetchInterval: POLL_MS,
   });
 }

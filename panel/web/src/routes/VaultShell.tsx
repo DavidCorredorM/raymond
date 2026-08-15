@@ -4,6 +4,16 @@ import { useNotes } from "../api/queries";
 import { NoteTree } from "../components/NoteTree";
 import { SearchBox, filterNotes } from "../components/SearchBox";
 
+function subnavClass({ isActive }: { isActive: boolean }): string {
+  return "vault-subnav-link" + (isActive ? " active" : "");
+}
+
+/**
+ * Notes/Graph/Health sub-nav lives here, not in AppShell — all three are
+ * views over the same vault, and Health moved from a top-level nav item
+ * to this row (plan §11.2: "reachable from within Vault, not a top-level
+ * nav item").
+ */
 export function VaultShell() {
   const { data: notes, isLoading, isError, error } = useNotes();
   const [query, setQuery] = useState("");
@@ -18,14 +28,17 @@ export function VaultShell() {
   return (
     <div className="vault-shell">
       <aside className="sidebar">
-        <div className="sidebar-header">
-          <NavLink to="/" end className="brand">
-            ben
+        <nav className="vault-subnav">
+          <NavLink to="/vault" end className={subnavClass}>
+            Notes
           </NavLink>
-          <NavLink to="/health" className={({ isActive }) => "health-link" + (isActive ? " active" : "")}>
-            health
+          <NavLink to="/vault/graph" className={subnavClass}>
+            Graph
           </NavLink>
-        </div>
+          <NavLink to="/vault/health" className={subnavClass}>
+            Health
+          </NavLink>
+        </nav>
         <SearchBox value={query} onChange={setQuery} />
         <nav className="note-tree">
           {isLoading && <p className="muted">Loading notes…</p>}
