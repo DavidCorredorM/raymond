@@ -78,8 +78,14 @@ as before, now written down instead of only implied.
 
 ## 9. Non-markdown files — upload, download, and browsing them at all
 
-Found 2026-08-15, while writing up Angela's deployment notes. The panel
-currently has **zero** support for anything that isn't a `.md` file:
+Found 2026-08-15, while writing up Angela's deployment notes; the two
+open questions it raised were **decided the same day**, below. This is
+now a spec to build, not a design discussion.
+
+### The gap
+
+The panel currently has **zero** support for anything that isn't a `.md`
+file:
 
 - `walk()` in `vault.ts` only ever collects files ending `.md` — a PDF or
   Excel file sitting inside the vault is invisible to the index, never
@@ -89,56 +95,85 @@ currently has **zero** support for anything that isn't a `.md` file:
 - No upload path of any kind.
 
 This matters now specifically because it didn't before: tricks can run
-scripts (`correr_script`, shipped today) and a real skill regenerating a
-report is exactly the kind of thing that produces a PDF or an Excel file
-someone will want to actually look at. Right now that output is reachable
-by SSH only, regardless of where it lands.
+scripts (`correr_script`, shipped 2026-08-15) and a real skill
+regenerating a report is exactly the kind of thing that produces a PDF or
+an Excel file someone will want to actually look at. Right now that
+output is reachable by SSH only, regardless of where it lands — and one
+real deployment (Angela's) already has this happening today: 10 ported
+SIGRA skills producing real Excel/PDF/HTML output nobody can see except
+over SSH.
 
-**Compounding wrinkle, specific to how the SIGRA skills already work:**
-all 10 ported skills write their output to `~/salidas/`, a plain
-home-directory folder **outside** `~/raymond-brain` entirely (their own
-convention, decided independently — see `_lib/rutas.py` and
-`panel/pendientes.md` in that deployment). Fixing vault-file support
-alone would not surface anything they produce; they don't write into the
-vault.
+### Decided: attachments live inside the vault, not a side folder
 
-### The open decision, not yet made
+Two shapes were on the table; **shape 1 is the decision**, made
+2026-08-15: non-markdown files are indexed, served, and uploadable **as
+part of the vault**, the same tree as everything else — not a second,
+panel-aware exception for specific external folders. This keeps "the
+vault is the only thing the panel knows about" (README, "The vision,"
+rule 1) intact rather than forking it, and it means real deliverables get
+git history for free, same as a note does.
 
-Two shapes, genuinely different in cost and in what they do to the
-project's own "files are the only state, the vault is the only thing the
-panel knows about" invariant (README, "The vision," rule 1):
+Explicitly **rejected**: the panel learning to browse fixed external
+folders (e.g. `~/entrada`, `~/salidas`) alongside the vault. Angela found
+that pattern confusing in practice — "she will get lost with that" — and
+it would have made the panel's file-system knowledge a two-tier thing
+(the vault, plus some other blessed folders) instead of one tree. Don't
+resurrect this shape without a real reason the decided one can't work.
 
-1. **Attachments live inside the vault.** Index non-`.md` files, serve
-   and accept uploads for them, same tree as everything else — still one
-   thing, still git-tracked, still portable if the vault ever moves.
-   Cost: the 10 already-working skills would need to write into the
-   vault instead of `~/salidas`, or a second output convention needs to
-   exist and be reconciled.
-2. **The panel also browses specific non-vault folders** (`~/entrada`,
-   `~/salidas`) read-only, alongside the vault. Zero disruption to the
-   skills as they exist today. Cost: the panel would know about
-   filesystem locations that aren't the vault — a real, deliberate
-   exception to a rule every other part of this project has held to, and
-   it should be named as an exception if chosen, not slid into quietly.
+### Decided: skills write into the vault, organized by topic — not a dump folder
 
-Leaning toward (1) — it keeps the invariant intact and means real
-deliverables get version history for free — but this needs an actual
-decision, not a default. Whoever picks this up: read this section before
-building either shape.
+**A second, related requirement, not just a consequence of the first:**
+skill and trick output must not land in one generic output folder at
+all — `~/salidas`, or an `attachments/` catch-all, or anything
+equivalent. A monthly strategy dashboard belongs near the strategy notes
+it's about; a competitor financial snapshot belongs near the competitor
+notes. **The destination is chosen by what the content is, the same way
+a human filing that report by hand would choose a folder** — not by
+which tool produced it.
 
-### What either shape needs, roughly
+Concretely, for the one real deployment that already has this problem:
+the 10 SIGRA skills currently write everything to `~/salidas/` via
+`_lib/rutas.py`'s `rutas.SALIDAS`. That constant, and every skill script
+using it, needs to change to write to a topic-appropriate path under
+`companies/sigra/` (or `companies/icpp/`, or `holding/`) instead — e.g.
+`/tablero-de-gerencia`'s monthly package belongs under
+`companies/sigra/00-Estrategia/`, near `seguimiento-objetivos-2026.md`,
+not in a folder named after the fact that it's "output." This is
+deployment-specific work (that vault's own `_lib/rutas.py` and its
+skills), flagged here so it isn't lost, tracked concretely in that
+vault's own `panel/pendientes.md`.
 
-- Backend: extend `walk()`/`buildIndex` to include non-`.md` files (or a
-  parallel index for them — binary files don't have frontmatter, `slug`,
-  or wiki-links, so they don't fit the `Note` type as-is). A download
-  endpoint serving raw bytes with the right `Content-Type`. An upload
-  endpoint — `multipart/form-data`, and the same path-safety discipline
-  every write endpoint here already has (`safeRelPath`/`safeScriptPath`
-  pattern), since an upload endpoint is a new way to place a file on
-  disk and needs the same rigor `correr_script` got.
-- Frontend: the note tree already groups by folder — extend it to show
-  non-`.md` entries too (icon by type, no markdown rendering attempt), a
-  download button/link, an upload control. A PDF/image could preview
-  inline; most other types just download.
-- Size limits worth deciding up front, not discovering via an accidental
-  large upload.
+For the base package: this is a principle any future skill or trick
+should follow from the start, not a rule specific to SIGRA. Worth adding
+to `trick-creator`'s guidance once this is built — a trick whose
+`correr_script` produces a file should declare *where*, and the
+principle is "next to what it's about," not "wherever's convenient."
+
+### What to build
+
+**Backend:**
+- Extend `walk()`/`buildIndex` (or add a parallel, lighter index) to
+  include non-`.md` files. They don't have frontmatter, a `slug`, or
+  wiki-links, so they don't fit the existing `Note` type as-is — a
+  smaller `Attachment { path, size, mtime }` shape is probably right,
+  not a forced fit into `Note`.
+- A download endpoint serving raw bytes with the correct `Content-Type`
+  inferred from extension.
+- An upload endpoint (`multipart/form-data`). Apply the same path-safety
+  discipline every write endpoint here already has
+  (`safeRelPath`/`safeScriptPath` pattern) — an upload endpoint is a new
+  way to place a file on disk and deserves the same rigor `correr_script`
+  got, including a re-verification pass by whoever builds it, the same
+  way `correr_script` was independently attacked (path traversal, this
+  time via filename) before being trusted.
+- Decide and enforce a size limit up front — don't discover it via an
+  accidental large upload.
+
+**Frontend:**
+- The note tree already groups by folder — extend it to show non-`.md`
+  entries too (icon by type, no markdown rendering attempted on them), a
+  download link, an upload control scoped to the current folder (so an
+  upload lands where the user is looking, which is itself a small
+  instance of the "organize by what it is, not a dump folder" principle
+  above).
+- A PDF or image could preview inline; most other types just download.
