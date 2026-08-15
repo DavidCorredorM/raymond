@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+#
+# Health check for the vault's navigation layer. Run after any bulk move,
+# rename, or import — those are when links rot and indexes go stale.
+#
+#   vault-lint            everything
+#   vault-lint --links    broken [[wiki-links]] only
+#   vault-lint --index    folders missing an index.md
+#   vault-lint --front    notas sin frontmatter obligatorio
+#
+# Skipped: `_templates/` (deliberate placeholder links), `CLAUDE.md`
+# (instructions, not a note), and `.claude/` (skills use a different
+# frontmatter schema — name/description, not cuando-usar).
+#
+set -uo pipefail
+
+VAULT="${VAULT_DIR:-$HOME/vault}"
+MODE="${1:---all}"
+
+cd "$VAULT" || { echo "no vault at $VAULT" >&2; exit 1; }
+
+# Real notes only. Excludes git internals, tooling, templates, skills
+# (SKILL.md uses a different frontmatter schema), and the rules file.
+note_files() {
+  find . -name '*.md' \
+    -not -path './.git/*' \
+    -not -path './.claude/*' \
+    -not -path './_templates/*' \
+    -not -path './_tools/*' \
+    -not -name 'CLAUDE.md' | sort
+}
+
+report() {           # report <heading> — reads findings on stdin
+  local heading="$1" out
+  out=$(cat)
+  printf '\n\033[1m%s\033[0m\n' "$heading"
+  if [[ -z "$out" ]]; then
+    echo "  none"
+  else
+    echo "$out"
+    FAILED=1
+  fi
+}
+
+# Delegated to linkcheck.py. Resolving [[links]] correctly means handling
+# bare names, root-relative paths, note-relative paths with ../, optional
+# extensions, aliases, and backslash-escaped pipes inside tables. The
+# previous shell version handled only bare names and reported 764 broken
+# links on a vault that actually had 82 — a checker that cries wolf gets
+# ignored, which is worse than having no checker.
+check_links() {
+  local out
+  out=$("$(dirname "${BASH_SOURCE[0]}")/linkcheck.py" "$VAULT")
+  printf '\n\033[1m%s\033[0m\n' "Wiki-links rotos"
+  echo "$out"
+  grep -qx '  none' <<< "$out" || FAILED=1
+}
+
+
+check_index() {
+  {
+    while IFS= read -r dir; do
+      [[ -f "$dir/index.md" ]] && continue
+      compgen -G "$dir"/*.md >/dev/null || continue
+      printf '  %s\n' "${dir#./}"
+    done < <(find . -type d \
+               -not -path './.git*' -not -path './.claude*' \
+               -not -path './_tools*' -not -path './_templates*' \
+               -not -name '.*' | sort)
+  } | report "Carpetas sin index.md"
+}
+
+check_frontmatter() {
+  {
+    while IFS= read -r file; do
+      if ! head -1 "$file" | grep -q '^---$'; then
+        printf '  %-45s sin frontmatter\n' "${file#./}"
+      elif ! grep -q '^cuando-usar:' "$file"; then
+        printf '  %-45s sin cuando-usar\n' "${file#./}"
+      fi
+    done < <(note_files)
+  } | report "Notas sin frontmatter"
+}
+
+FAILED=0
+case "$MODE" in
+  --links) check_links ;;
+  --index) check_index ;;
+  --front) check_frontmatter ;;
+  --all)   check_links; check_index; check_frontmatter ;;
+  *)       echo "usage: vault-lint [--links|--index|--front]" >&2; exit 1 ;;
+esac
+
+printf '\n%s notas, %s carpetas\n' \
+  "$(note_files | wc -l | tr -d ' ')" \
+  "$(find . -type d -not -path './.git*' -not -name '.*' | wc -l | tr -d ' ')"

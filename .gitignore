@@ -1,0 +1,15 @@
+.DS_Store
+*.iso
+*.img
+secrets*
+
+# per-deployment notes — machine-specific, never committed
+deployments/*
+!deployments/README.md
+
+# panel/ (Node)
+panel/*/node_modules/
+panel/*/dist/
+*.log
+.env
+.env.*

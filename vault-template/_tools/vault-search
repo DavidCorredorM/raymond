@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+#
+# Tiered search over the vault. Metadata beats body text: a note whose
+# `cuando-usar:` matches your task is far more likely to be the right one
+# than a note that merely mentions the word somewhere in its body.
+#
+#   vault-search wifi netplan      AND-matches every term
+#   vault-search -l "power"        also search bodies (slower, noisier)
+#   vault-search -s notes wifi     restrict to a subfolder
+#
+# Tiers, best first. Each file is reported once, in its highest tier:
+#   T1 cuando-usar   T2 alias   T3 titulo (H1)   T4 indice   T5 etiqueta
+#   T6 cuerpo — solo con -l
+#
+set -uo pipefail
+
+VAULT="${VAULT_DIR:-$HOME/vault}"
+SCOPE=""
+BODY=false
+
+usage() { echo "usage: vault-search [-s <subdir>] [-l] <term> [term...]" >&2; exit 1; }
+
+while getopts ":s:l" opt; do
+  case $opt in
+    s) SCOPE="$OPTARG" ;;
+    l) BODY=true ;;
+    *) usage ;;
+  esac
+done
+shift $((OPTIND - 1))
+[[ $# -eq 0 ]] && usage
+
+ROOT="$VAULT${SCOPE:+/$SCOPE}"
+[[ -d "$ROOT" ]] || { echo "no such path: $ROOT" >&2; exit 1; }
+
+TERMS=("$@")
+SEEN=$(mktemp); trap 'rm -f "$SEEN"' EXIT
+ANY=false
+
+# Does $1 match every term, on lines matching the field pattern in $2?
+# $2 contains the literal string TERM, replaced by each search term.
+matches_all() {
+  local file="$1" pattern="$2" term
+  for term in "${TERMS[@]}"; do
+    grep -qiE "${pattern//TERM/$term}" "$file" || return 1
+  done
+  return 0
+}
+
+tier() {
+  local label="$1" pattern="$2" glob="${3:-*.md}"
+  local header_shown=false file
+  while IFS= read -r file; do
+    grep -qxF "$file" "$SEEN" && continue
+    matches_all "$file" "$pattern" || continue
+    $header_shown || { printf '\n\033[1m%s\033[0m\n' "$label"; header_shown=true; }
+    printf '  %s\n' "${file#"$VAULT"/}"
+    echo "$file" >> "$SEEN"
+    ANY=true
+  done < <(find "$ROOT" -name "$glob" -not -path '*/.git/*' | sort)
+}
+
+tier "T1  cuando-usar" '^cuando-usar:.*TERM'
+tier "T2  alias"       '^alias(es)?:.*TERM'
+tier "T3  titulo"      '^(# |titulo:).*TERM'
+tier "T4  indice"      'TERM'            'index.md'
+tier "T5  etiqueta"    '^(etiquetas|tags|area):.*TERM'
+$BODY && tier "T6  cuerpo" 'TERM'
+
+if ! $ANY; then
+  echo "Sin coincidencias en metadatos."
+  $BODY || echo "Usa -l para buscar tambien en el cuerpo."
+  exit 1
+fi

@@ -1,0 +1,268 @@
+import { readFile, readdir, stat, writeFile, mkdir } from "node:fs/promises";
+import { join, relative, dirname, sep } from "node:path";
+import matter from "gray-matter";
+
+export interface Note {
+  /** Vault-relative path, POSIX separators. The stable id for a note. */
+  path: string;
+  /** Filename without .md — what [[wiki-links]] resolve against. */
+  slug: string;
+  title: string;
+  frontmatter: Record<string, unknown>;
+  /** Outgoing [[wiki-link]] targets, unresolved. */
+  links: string[];
+  mtime: number;
+  size: number;
+}
+
+export interface VaultIndex {
+  notes: Map<string, Note>;
+  /** slug -> paths. A slug with >1 path is a collision and breaks links. */
+  bySlug: Map<string, string[]>;
+  /**
+   * Note path -> paths of notes linking to it. Keyed by *resolved path*,
+   * not raw link text, so `[[foo]]` and `[[../folder/foo]]` both land on
+   * the same target.
+   */
+  backlinks: Map<string, string[]>;
+}
+
+const WIKILINK = /\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]/g;
+
+export function extractLinks(body: string): string[] {
+  const out = new Set<string>();
+  for (const m of body.matchAll(WIKILINK)) {
+    // Inside markdown tables the alias pipe is escaped: [[target\|alias]].
+    // The capture stops at the pipe but keeps the backslash, so a link to
+    // `nutresa` arrives as `nutresa\` and never resolves.
+    const target = m[1]?.trim().replace(/\\+$/, "").trim();
+    if (target) out.add(target);
+  }
+  return [...out];
+}
+
+/** First H1 if present, else the filename. Titles drive the UI, not the path. */
+export function extractTitle(body: string, slug: string): string {
+  const m = body.match(/^#\s+(.+?)\s*$/m);
+  return m?.[1]?.trim() || slug;
+}
+
+async function walk(
+  dir: string,
+  root: string,
+  ignore: string[],
+  acc: string[] = [],
+): Promise<string[]> {
+  let entries;
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return acc; // unreadable dir shouldn't abort the whole index
+  }
+  for (const e of entries) {
+    if (ignore.includes(e.name)) continue;
+    const full = join(dir, e.name);
+    if (e.isDirectory()) {
+      await walk(full, root, ignore, acc);
+    } else if (e.isFile() && e.name.endsWith(".md")) {
+      acc.push(relative(root, full).split(sep).join("/"));
+    }
+  }
+  return acc;
+}
+
+export async function readNote(
+  vaultDir: string,
+  relPath: string,
+): Promise<Note> {
+  const full = join(vaultDir, relPath);
+  const [raw, st] = await Promise.all([readFile(full, "utf8"), stat(full)]);
+  const parsed = matter(raw);
+  const slug = relPath.replace(/\.md$/, "").split("/").pop()!;
+  return {
+    path: relPath,
+    slug,
+    title: extractTitle(parsed.content, slug),
+    frontmatter: parsed.data as Record<string, unknown>,
+    links: extractLinks(parsed.content),
+    mtime: st.mtimeMs,
+    size: st.size,
+  };
+}
+
+export async function buildIndex(
+  vaultDir: string,
+  ignore: string[],
+): Promise<VaultIndex> {
+  const paths = await walk(vaultDir, vaultDir, ignore);
+  const notes = new Map<string, Note>();
+
+  await Promise.all(
+    paths.map(async (p) => {
+      try {
+        notes.set(p, await readNote(vaultDir, p));
+      } catch {
+        // A single malformed note must not take down the index.
+      }
+    }),
+  );
+
+  return { notes, ...deriveMaps(notes) };
+}
+
+/**
+ * Slug and backlink maps are pure functions of the notes, so they are
+ * recomputed together whenever a file changes.
+ *
+ * Order matters: bySlug must exist before links can be resolved, since
+ * resolution consults it first.
+ */
+export function deriveMaps(notes: Map<string, Note>) {
+  const bySlug = new Map<string, string[]>();
+  for (const note of notes.values()) {
+    const list = bySlug.get(note.slug) ?? [];
+    list.push(note.path);
+    bySlug.set(note.slug, list);
+  }
+
+  const partial: VaultIndex = { notes, bySlug, backlinks: new Map() };
+  const backlinks = new Map<string, string[]>();
+  for (const note of notes.values()) {
+    for (const target of note.links) {
+      const resolved = resolveLink(partial, note.path, target);
+      if (!resolved) continue;
+      const list = backlinks.get(resolved) ?? [];
+      if (!list.includes(note.path)) list.push(note.path);
+      backlinks.set(resolved, list);
+    }
+  }
+
+  return { bySlug, backlinks };
+}
+
+/**
+ * Is this a *note*, as opposed to machinery that happens to be markdown?
+ *
+ * SKILL.md files under `.claude/skills` use a different frontmatter
+ * schema (name/description, not when-to-use). Templates contain
+ * deliberate placeholder links. CLAUDE.md is instructions. All are
+ * indexed so the UI can display them — but none should be judged by
+ * note rules.
+ */
+export function isNote(path: string): boolean {
+  if (path.startsWith(".claude/")) return false;
+  if (path.startsWith("_templates/")) return false;
+  if (path.startsWith("_tools/")) return false;
+  if (path === "CLAUDE.md" || path.endsWith("/CLAUDE.md")) return false;
+  return true;
+}
+
+/**
+ * Resolve a wiki-link target to a note path, or null if nothing matches.
+ *
+ * Obsidian accepts three forms and real vaults mix all of them:
+ *   [[note-name]]                    bare slug, shortest unique path
+ *   [[folder/note-name]]             path from the vault root
+ *   [[../sibling/note-name]]         path relative to the linking note
+ *
+ * Extensions are optional in every form. Resolving only bare slugs, as a
+ * first implementation naturally does, reports most of a real vault's
+ * links as broken.
+ */
+export function resolveLink(
+  index: VaultIndex,
+  fromPath: string,
+  target: string,
+): string | null {
+  const clean = target.trim().replace(/\.md$/i, "");
+  if (!clean) return null;
+
+  // 1. Bare slug — the common case.
+  const bySlug = index.bySlug.get(clean);
+  if (bySlug?.length) return bySlug[0]!;
+
+  const candidates: string[] = [];
+
+  // 2. Vault-root-relative.
+  candidates.push(clean);
+
+  // 3. Relative to the linking note's directory.
+  const fromDir = fromPath.includes("/")
+    ? fromPath.slice(0, fromPath.lastIndexOf("/"))
+    : "";
+  candidates.push(normalisePath(fromDir ? `${fromDir}/${clean}` : clean));
+
+  for (const c of candidates) {
+    if (!c) continue;
+    if (index.notes.has(`${c}.md`)) return `${c}.md`;
+    if (index.notes.has(c)) return c;
+  }
+  return null;
+}
+
+/** Collapse `.` and `..` segments. Paths are vault-relative, never absolute. */
+function normalisePath(p: string): string {
+  const out: string[] = [];
+  for (const seg of p.split("/")) {
+    if (!seg || seg === ".") continue;
+    if (seg === "..") out.pop();
+    else out.push(seg);
+  }
+  return out.join("/");
+}
+
+/** Links that resolve to nothing. The vault-lint check, in-app. */
+export function brokenLinks(index: VaultIndex): Array<{ from: string; to: string }> {
+  const out: Array<{ from: string; to: string }> = [];
+  for (const note of index.notes.values()) {
+    if (!isNote(note.path)) continue;
+    for (const target of note.links) {
+      if (!resolveLink(index, note.path, target)) {
+        out.push({ from: note.path, to: target });
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Slugs provided by more than one file — these silently break wiki-links,
+ * because `[[foo]]` cannot say which `foo.md` it means.
+ *
+ * `index` is exempt. One index.md per folder is the vault convention, and
+ * indexes are reached by navigating into a folder, never by bare wiki-link.
+ * Without this exemption every vault reports a permanent false positive.
+ */
+const COLLISION_EXEMPT = new Set(["index"]);
+
+export function slugCollisions(index: VaultIndex): Array<{ slug: string; paths: string[] }> {
+  const out: Array<{ slug: string; paths: string[] }> = [];
+  for (const [slug, paths] of index.bySlug) {
+    if (COLLISION_EXEMPT.has(slug)) continue;
+    const real = paths.filter(isNote);
+    if (real.length > 1) out.push({ slug, paths: real });
+  }
+  return out;
+}
+
+export async function writeNote(
+  vaultDir: string,
+  relPath: string,
+  content: string,
+): Promise<void> {
+  const full = join(vaultDir, relPath);
+  await mkdir(dirname(full), { recursive: true });
+  await writeFile(full, content, "utf8");
+}
+
+/**
+ * Reject anything escaping the vault. Every path from the client goes
+ * through this before touching the filesystem.
+ */
+export function safeRelPath(input: string): string {
+  const norm = input.replace(/\\/g, "/").replace(/^\/+/, "");
+  if (norm.split("/").includes("..") || norm.includes("\0")) {
+    throw new Error(`Unsafe path: ${input}`);
+  }
+  return norm;
+}

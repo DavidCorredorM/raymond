@@ -1,0 +1,38 @@
+[Unit]
+Description=Ben — vault panel
+Documentation=https://github.com/…/ben
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Vault path is configuration, never baked into the code. Override with
+#   systemctl --user edit ben-panel
+Environment=VAULT_DIR=%h/vault
+Environment=PORT=8710
+Environment=NODE_ENV=production
+WorkingDirectory=%h/ben/panel/server
+# Compiled JS, not tsx: one less runtime dependency, faster start, and
+# a syntax error fails the build rather than the service.
+# Build first:  npm run build --workspace=server
+ExecStart=/usr/bin/node dist/index.js
+
+Restart=on-failure
+RestartSec=3
+
+# The tailnet is the security perimeter, but defence in depth is cheap:
+# the process only ever needs to read and write the vault.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/vault
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
