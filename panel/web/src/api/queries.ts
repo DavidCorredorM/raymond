@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { fetchJSON } from "./client";
+import { fetchJSON, uploadAttachment, type UploadRequest } from "./client";
 import type {
+  Attachment,
+  AttachmentUploadResult,
   GraphResponse,
   NoteDetail,
   NoteSummary,
@@ -67,6 +69,42 @@ export function useSaveNote() {
       }),
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["note", variables.path] });
+      queryClient.invalidateQueries({ queryKey: ["notes"] });
+    },
+  });
+}
+
+/**
+ * The vault's non-`.md` files (roadmap #9). Separate query from `useNotes`
+ * on purpose — separate endpoint, separate shape — and merged into one tree
+ * client-side (lib/vaultTree.ts). Same poll interval as the notes list: a
+ * script writing a report into the vault should show up without a reload,
+ * which is the whole point of the feature.
+ */
+export function useAttachments() {
+  return useQuery({
+    queryKey: ["attachments"],
+    queryFn: () => fetchJSON<Attachment[]>("/api/attachments"),
+    refetchInterval: POLL_MS,
+  });
+}
+
+/**
+ * The only write path that puts a file in the vault from the browser. The
+ * caller passes the destination folder explicitly — there is no default
+ * destination, by design: roadmap #9 decided attachments are filed by what
+ * they are, next to the notes they belong to, never into a dump folder.
+ *
+ * Invalidates the attachment list so the tree shows the new file straight
+ * away, and the notes list too, since an uploaded `.md` lands in that index
+ * instead (the server decides which one a given file belongs to).
+ */
+export function useUploadAttachment() {
+  const queryClient = useQueryClient();
+  return useMutation<AttachmentUploadResult, Error, UploadRequest>({
+    mutationFn: (req) => uploadAttachment(req),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["attachments"] });
       queryClient.invalidateQueries({ queryKey: ["notes"] });
     },
   });

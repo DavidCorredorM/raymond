@@ -26,3 +26,10 @@ export function filterNotes<T extends { title: string; slug: string; path: strin
       n.path.toLowerCase().includes(q),
   );
 }
+
+/** Same filter for attachments, which have a path and nothing else to match. */
+export function filterAttachments<T extends { path: string }>(files: T[], query: string): T[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return files;
+  return files.filter((f) => f.path.toLowerCase().includes(q));
+}
