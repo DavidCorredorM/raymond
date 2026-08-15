@@ -1181,3 +1181,161 @@ modal would have frozen the browser session mid-test.
 - Attachments are absent from `/api/health/vault`. Broken links, slug
   collisions and frontmatter are all note concepts; "an attachment
   nothing links to" is a plausible future check, not one designed here.
+
+## [2026-08-15] Tricks v2 designed: a trick is a mini app, not a widget list
+
+`panel/docs/tricks-spec.md` rewritten in place. The fixed v1 vocabulary
+(`lista`, `boton`, `texto`, `checkbox`, `fecha`, `select`, `formulario`) is
+retired as an authoring target; a trick is now **arbitrary files under
+`.claude/tricks/<name>/app/`** — any HTML, CSS and JavaScript the author
+wants — rendered in a sandboxed opaque-origin iframe with a
+capability-scoped `postMessage` bridge as its only route to the vault.
+
+The v1 spec's own reasoning is what changed, and it is worth naming: it
+argued that rendering arbitrary JavaScript was a materially bigger risk
+than rendering arbitrary markdown, because "code can call `fetch()`, read
+every note, and send it anywhere." True — **of code running on the panel's
+origin.** Arbitrary JavaScript is only dangerous where it runs. The hard
+requirement was never "no arbitrary code," it was "no arbitrary code on the
+panel's origin," and v1 paid for the stronger constraint by making a whole
+class of requests unanswerable.
+
+Rewritten in place rather than added alongside: README, `vault-template/CLAUDE.md`,
+`trick-creator`, `tricks.ts` and several entries in this file all point at
+that path.
+
+### The asset-loading decision, which is the whole design
+
+Serving `app/index.html` from a normal endpoint puts it on the panel's
+origin — the exact thing being prevented. Three alternatives were measured,
+not reasoned about:
+
+- **`srcdoc`** gives an opaque origin but resolves relative URLs against
+  the *parent's* base. `<script src="altprobe.js">` in a `srcdoc` frame
+  requested `/altprobe.js` and 404'd. An absolute path did run. So it only
+  works with a server-side HTML rewriter that catches every URL form
+  including ones a script builds at runtime — which is not possible, and is
+  the opposite of "no constraints."
+- **`blob:` URLs** were worse: the frame loaded opaque-origin, but a
+  `blob:` URL has an opaque path, so **nothing** resolves against it. Zero
+  subresource requests — the absolute path that worked under `srcdoc`
+  didn't even reach the server.
+- **A second port/origin** does not actually protect the API. See below.
+
+**Chosen:** serve the real files from a real hierarchical URL on the
+panel's own port, and make the *response* opaque-origin with
+`Content-Security-Policy: sandbox allow-scripts`, embedded in an
+`<iframe sandbox="allow-scripts">`. Two independent mechanisms, either
+sufficient; forgetting one is survivable, and forgetting both is the kind
+of silent catastrophe worth paying for twice. Everything works: relative
+paths, subfolders, images, stylesheets, classic scripts, ES modules,
+dynamic `import()`, blob Workers, canvas.
+
+### Verified in Chrome 151/macOS against a throwaway prototype
+
+- **The frame cannot reach the panel's origin.** `parent.document`,
+  `top.document`, `localStorage`, `sessionStorage`, `indexedDB`,
+  `document.cookie` and `caches` all throw `SecurityError`.
+  `window.frameElement` is `null`, so the frame cannot reach its own
+  `sandbox` attribute to remove it — the reason
+  `allow-scripts` + `allow-same-origin` is not a sandbox, checked from the
+  other side.
+- **`allow-top-navigation` is not granted, confirmed by attacking it:**
+  `top.location.href = "http://example.com/…"` →
+  `SecurityError: The current window does not have permission to navigate
+  the target`. `window.open` returned `null`.
+- **A CORS "simple request" write goes through, and this decided the
+  design.** With `connect-src` permitted, an opaque-origin frame's
+  `fetch("/api/note", {method:"POST", mode:"no-cors"})` **reached the
+  server with `Origin: null` and wrote to the fake vault.** CORS protects
+  the *response*, not the *request*. So `connect-src 'none'` is mandatory,
+  and "put tricks on a second port" was rejected on evidence rather than
+  taste. Corollary written into the spec, and `assumed:` because it was not
+  tested against the real server: Fastify's `text/plain` parser is probably
+  the only reason `PUT /api/note` isn't vulnerable to the same shape.
+  That's an accident, not a rule — mutating endpoints should require
+  `application/json` explicitly, and the attachment upload route deserves a
+  direct look, since `multipart/form-data` is also a CORS-simple content
+  type.
+- **CSP `'self'` does work inside an opaque origin**, which was predicted
+  wrong before it was tested. It matches the document's *URL* origin, not
+  its opaque origin: the app's own script ran, an identical script from a
+  different origin on the same server did not.
+- **The bridge holds.** Undeclared `vault.write`, `vault.read` and
+  `script.run` all came back `capability_denied`; a `../../` path escape
+  was denied; a message with `trick: "pinta"` forged into the body was
+  still evaluated as the sending trick, because **identity is the
+  MessagePort, not a field**. `event.origin` is the literal string
+  `"null"` for every opaque-origin document, so it authenticates nothing —
+  written into the spec explicitly because it looks like a check.
+- **Every exfiltration route was silent:** `sendBeacon` returned `true`
+  with no request, remote `<img>`, `WebSocket` and `EventSource` all
+  produced nothing on the wire, and a `form.submit()` to `/api/note` never
+  fired because `allow-forms` is not granted.
+
+### Two things the prototype found that the design would not have
+
+- **Opening an app URL top-level is not harmless.** Before the fix,
+  browsing straight to `…/api/tricks/hostil/app/` loaded the hostile app as
+  its own page — still opaque-origin, but it **redirected the tab to
+  `example.com`**. `Content-Security-Policy: sandbox` does not stop a
+  top-level document navigating itself. Fixed with a `Sec-Fetch-*` gate:
+  the entry document is served only for `dest=iframe` **and**
+  `site=same-origin`, which also blocks one trick frame navigating itself
+  into another trick's app (that reports `site=cross-site`, because the
+  initiator origin is opaque).
+- **The obvious wrong version of that gate cost real time.** Checking
+  `Sec-Fetch-Site` on *subresources* 403s every script, stylesheet and
+  image the app loads — they report `cross-site` for the same reason — and
+  because the 403 body is JSON served with `nosniff`, the symptom is
+  "assets are fetched but never execute," with no CSP violation and nothing
+  obviously wrong. Both the rule and the trap are in the spec.
+- **A frame that navigates itself fires `load` again**, and a naive host
+  hands a fresh capability port to a document it never mounted (observed
+  twice for one iframe). Capabilities stayed bound to the mount, so it
+  wasn't an escalation — but "this port belongs to the app I loaded" was
+  broken, and a broken-but-currently-harmless invariant is exactly the
+  shape of the escalation below. Rule: one port per mount, unmount on the
+  second `load`.
+
+### The fourth `correr_script` constraint, and the general lesson
+
+Folded in from a real escalation found the same day while attacking the
+attachment upload endpoint: upload a `trick.yaml` into
+`.claude/tricks/<name>/` naming an already-executable script with chosen
+`args`, then `POST /api/tricks/:name/run`. It ran. **No path traversal** —
+the file lands inside the vault and passes every location check.
+
+Nothing in `tricks.ts` was wrong. Its property — *the client selects which
+script runs, never what runs* — rested on an unstated premise: that
+**declaring** a script required filesystem access. A new write endpoint
+removed the premise and the property evaporated without a line of the old
+code changing. `.git/config` and `.obsidian/plugins/` are the same class.
+
+So the spec now lists four constraints, not three, and states the general
+rule once: **a security property that depends on an unstated premise about
+who can write a file is not enforced, it is assumed.** Any endpoint that
+can place a file invalidates every such premise until it is re-checked.
+`.claude/` is executable configuration — manifests, skills, app code,
+runners — and must never be writable through a network endpoint. v2 makes
+this sharper, not looser: `app/**` is code the panel hands a browser and
+tells it to run, so it lives under the same rule, and `vault.write` refuses
+`.claude/` except a trick's own `data/`.
+
+### Migration, and what is deliberately not built
+
+`vault-template/` ships no tricks, so base-package migration cost is docs
+and the skill. The panel keeps rendering v1 manifests for one release,
+labelled legacy, then that renderer is deleted — two systems rendering
+tricks is the drift this repo keeps logging as a bug. The one-step "just
+give me a checklist" path survives as starter apps under
+`.claude/tricks/_plantillas/` that `trick-creator` copies and edits, so the
+fast path produces files an author can then change instead of waiting for a
+new primitive.
+
+Not verified: **anything outside Chrome 151 on macOS.** `assumed:` Firefox
+and Safari behave the same; the `Sec-Fetch-*` gate is the piece most worth
+re-checking per browser, since it fails closed and presents as "the trick
+doesn't render." Nothing was implemented — `panel/server/src/**` and
+`panel/web/src/**` are untouched; the spec's §13 lists the build order and
+which seams are parallel.

@@ -249,3 +249,36 @@ Recorded so these are choices rather than oversights:
   `vault-lint`, or an auto-commit-and-push of the vault — was left out
   on purpose: a fresh install should not start doing things nobody asked
   for.
+
+## 11. Tricks v2 — deferred pieces of the mini-app design
+
+Opened 2026-08-15 by the tricks v2 spec (`panel/docs/tricks-spec.md`).
+The design is settled and its build order is in that document's §13; these
+are the parts deliberately left out of it.
+
+- **Cross-browser verification.** Every security property in the spec was
+  verified in **Chrome 151 on macOS only**. Firefox and Safari are
+  `assumed:`. The `Sec-Fetch-*` entry gate is the piece to re-check first:
+  it fails closed, so a browser that reports those headers differently
+  presents as "the trick doesn't render," not as a security hole. Do this
+  before anyone relies on a trick from a phone.
+- **A push transport.** Freshness is polling (5 s while visible), because
+  the panel has no SSE or WebSocket today. A scheduled job writing a
+  trick's data is the case this exists for (rule 4), and polling is a
+  placeholder, not the answer. SSE slots in behind the same
+  `datos.cambiaron` event with no protocol change.
+- **Limits on `app/`.** No size or file-count ceiling is specified. Pick
+  one before a trick ships a 40 MB asset, not after.
+- **Retiring the v1 renderer.** `TrickRenderer`, `ListaControl`,
+  `ReadOnlyField` and the v1 branches of `TrickAction` stay for one release
+  as a labelled compatibility path, then get deleted along with the
+  migration section of the spec. Two systems rendering tricks is the drift
+  this repo keeps recording as a bug; leaving it un-scheduled is how it
+  becomes permanent.
+- **A capability for reading outside a trick's own scope.** Every
+  `vault.*` capability is folder-scoped by design, and a whole-vault
+  `carpeta` is refused at validation time. A trick that genuinely wants to
+  read across the vault — "show me everything tagged #wip" — has no path
+  today and should probably be a dashboard widget instead. If that turns
+  out to be wrong, the answer is a *query*-shaped capability with a fixed
+  filter, not a wider `carpeta`.
