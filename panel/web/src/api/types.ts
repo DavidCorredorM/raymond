@@ -27,6 +27,28 @@ export interface NoteDetail extends NoteSummary {
   backlinks: string[];
 }
 
+/**
+ * GET /api/attachments item — every vault file that isn't a `.md` note
+ * (roadmap #9). Deliberately not a `Note`: no frontmatter, no slug, no
+ * wiki-links, so nothing the note-shaped UI reads applies to it.
+ */
+export interface Attachment {
+  /** Vault-relative, extension included. */
+  path: string;
+  size: number;
+  mtime: number;
+  /** Same meaning as NoteSummary.isSystem — base-package plumbing, hidden by default. */
+  isSystem: boolean;
+}
+
+/** POST /api/attachment success body. */
+export interface AttachmentUploadResult {
+  ok: true;
+  /** Vault-relative path the file actually landed at. */
+  path: string;
+  size: number;
+}
+
 export interface BrokenLink {
   from: string;
   to: string;
