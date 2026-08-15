@@ -129,9 +129,10 @@ Tailscale. Three destinations:
   from a plain-language request; a `boton` can run a real, allowlisted
   server-side script via `correr_script`.
 
-Nine API endpoints total, all documented at the top of
-`panel/server/src/index.ts`: notes (list/read/write), the link graph,
-vault health, and tricks (list/read/run). No endpoint exists that a
+Twelve API endpoints total, all documented at the top of
+`panel/server/src/index.ts`: notes (list/read/write), attachments
+(list/download/upload), the link graph, vault health, and tricks
+(list/read/run). No endpoint exists that a
 human couldn't also achieve by editing a file directly — the API is a
 faster path to the same filesystem operations, not a separate
 capability.

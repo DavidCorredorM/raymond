@@ -824,7 +824,7 @@ repo isn't a call to make unilaterally.
 
 ## [2026-08-15] Rule 4 reversed: scheduled unattended runs are a feature
 
-The owner's call, in his words: *"4 is false. We should allow unattended
+The owner's call, in their words: *"4 is false. We should allow unattended
 scheduled runs. In fact I believe that in the base skills we should
 include a 'schedule job/skill/prompt' that creates cron jobs inside the
 machine that invoke either skills or scripts. That should be a basic
@@ -950,3 +950,234 @@ same family as Debian's) and a macOS `claude` build:
 - No job has actually been created on the reference build. The skill is
   written and its mechanics are verified in pieces; the first real job is
   still the first real job.
+
+## [2026-08-15] Attachments backend: upload, download, index (roadmap #9)
+
+Built the backend half of roadmap #9 — non-markdown files indexed,
+downloadable, and uploadable. Three endpoints, taking the panel from nine
+to twelve:
+
+```
+GET  /api/attachments        every non-.md file: path, size, mtime, isSystem
+GET  /api/attachment?path=   raw bytes
+POST /api/attachment         multipart upload: folder + one file part
+```
+
+The frontend half was being built concurrently, from a separate worktree,
+against a contract fixed in advance. Shipped exactly as specified — no
+deviations, so nothing for that agent to discover at integration time.
+
+Shape decisions, all following from what roadmap #9 already decided:
+
+- `Attachment { path, size, mtime }` as its own type and its own map on
+  `VaultIndex`, not a `Note` with three empty fields. Everything that
+  iterates `index.notes` — link resolution, backlinks, slug collisions,
+  the health check — would have needed an `isAttachment` exception, and
+  each of those is a place to forget one.
+- `walk()` extended rather than duplicated: one traversal, two buckets.
+  A parallel walk would double the IO to answer the same question and
+  give the two indexes room to disagree about what `ignore` means.
+- `isSystem` on the listing is the existing `isNote()` predicate, exactly
+  as `/api/notes` does it. One set of path rules.
+- 25 MB ceiling, `RAYMOND_MAX_UPLOAD_BYTES` to change it. Decided up
+  front, per the roadmap's "don't discover it via an accidental large
+  upload." A non-numeric or zero value makes the server refuse to start
+  rather than silently disabling the ceiling — `Number("lots")` is `NaN`
+  and `NaN` compares false against every limit check there is.
+- `.md` uploads rejected with 400. `PUT /api/note` stays the one write
+  path for notes; an uploaded `.md` would skip frontmatter parsing and
+  note reindexing entirely and sit in the vault invisible to links, the
+  graph, and the health check.
+
+`refresh()` in `index.ts` used to early-return on anything that wasn't
+`.md`. Left alone, an uploaded PDF would have been invisible until the
+process restarted, and a deleted one would have stayed listed and 404'd
+on download. Now it routes to the attachment map instead. Verified both
+directions against a running server: a file written by a plain shell
+redirect (not the API) was downloadable two seconds later; a file deleted
+with `rm` 404'd two seconds later.
+
+### The security pass, in detail
+
+Roadmap #9 asked for the same treatment `correr_script` got — an actual
+adversarial pass, not a happy-path test — because an upload endpoint with
+no authentication in front of it is a new way for anything on the tailnet
+to place a file on that disk. Ran every case below against a real server
+on a scratch vault, with `curl`, reading raw responses.
+
+**Held on the first try:**
+
+- Path traversal via `folder`: `../`, `../outside`, `a/../../..`,
+  `..\\..\\outside`, `../vault-evil` — all 400. Traversal via the
+  download `path`: same set, plus URL-encoded (`%2e%2e%2f`),
+  double-encoded, null-byte (`q1.pdf%00.png`), and absolute paths — all
+  400 or 404, none served a byte from outside.
+- The `/vault-evil` case specifically: a sibling directory whose name
+  starts with the vault's own name. The boundary check compares against
+  `vaultDir + sep`, not the bare prefix, so it does not match. Tested
+  with a real `vault-evil/neighbour.txt` sitting next to the scratch
+  vault; never reachable.
+- Symlinks, both shapes. A symlink inside the vault pointing at an
+  outside directory, used as `folder`: 400 ("path resolves outside the
+  vault"). Used as a download `path`: 404 — and 404 rather than 400
+  because `walk()` never indexed it in the first place. `isFile()` and
+  `isDirectory()` are both false for a symlink, so symlinks are neither
+  indexed nor descended into. That was already true before this change;
+  it is now load-bearing and commented as such. `overwrite=true` aimed at
+  an existing symlink is also refused outright — writing *through* a
+  symlink is an escape no location check catches.
+- Size limit, enforced by the parser while streaming. A 26 MB body
+  against the 25 MB default returned 413 in 0.08s — it aborted mid-upload
+  rather than reading the body and objecting afterwards, which is the
+  denial-of-service the limit exists to prevent, not a defence against
+  it. No partial file landed in the vault. 24 MB succeeded. Temp files
+  are in `os.tmpdir()`, never near the destination, and the plugin's
+  `onResponse` hook removes them on both paths — checked, nothing left
+  behind.
+- Field ordering is not part of the contract: the body is fully drained
+  before anything is validated, so `folder` is found whether it is sent
+  before or after the file part. Tested both orders.
+- Malformed bodies: no file part, not multipart at all, two file parts —
+  400 each, nothing written.
+
+**Did not hold — two escalations, both found by attacking it, neither
+by designing it.** Both share a shape worth naming: the file lands
+squarely inside the vault and every location check passes and is right to
+pass. "Did it escape the vault?" and "did it gain privilege?" are
+different questions, and the first one being answered well says nothing
+about the second.
+
+**One: `.claude/` — an uploaded `trick.yaml` defeats `correr_script`
+outright.** This is the serious one and it was found last, while trying
+to *verify* a claim I had already written down as safe.
+
+The chain, run end to end against a live server: upload a `trick.yaml`
+into `.claude/tricks/hijack/` naming an already-executable script
+belonging to a *different* trick, with `args` chosen by the attacker;
+then `POST /api/tricks/hijack/run`. It ran. The script executed with the
+supplied arguments and wrote a file outside the vault. No authentication
+anywhere in that sequence.
+
+Nothing in `tricks.ts` is wrong. Its security property is exactly as
+documented — "the client can only select *which* pre-declared script
+runs, never *what* runs" — and it held: `ruta` and `args` came from the
+server's own fresh read of `trick.yaml`, never from the run request. The
+property was load-bearing on an assumption nobody had written down, that
+*declaring* a script meant writing a file to disk, which meant a human or
+an agent with filesystem access. An unauthenticated upload endpoint makes
+declaring one an HTTP call, and a trust boundary that was carefully
+designed six commits ago evaporates without a line of it changing.
+`PUT /api/note` never opened this door because it only writes `.md`;
+this endpoint writes everything else — precisely the set `trick.yaml` is
+in.
+
+The near-miss is the part worth remembering. I had already written in
+this entry that uploading a trick was harmless because `execFile` needs
+the executable bit and `copyFile` produces 0644 — and labelled it as
+reasoning rather than a test, per this repo's conventions. Going back to
+actually run it found that the 0644 claim was true and *irrelevant*: the
+attack does not need to upload a script at all, only a manifest pointing
+at one that is already there. The labelling convention is what saved
+this. An unlabelled "this is fine" would have shipped.
+
+Fixed by refusing every upload under `.claude/`. Nothing legitimate
+needs it: roadmap #9's driver is skill output filed next to the notes it
+is about, which lives in the note tree, and tricks are authored by
+`trick-creator` working in the vault. Re-tested after the fix — both the
+upload-a-script path and the upload-only-a-manifest path are 400, the
+trick never appears in `/api/tricks`, running it 404s, and no side-effect
+file is created.
+
+**Two: ignored directories.** `folder=.git/hooks` was accepted, and the
+file landed in `<vault>/.git/hooks/pre-commit`. `.git/config` can set
+`core.pager` or `core.fsmonitor` to a command git then runs;
+`.obsidian/plugins/` is JavaScript Obsidian executes on the owner's
+machine. Either one turns "anything on the tailnet can upload a file"
+into "anything on the tailnet can run code."
+
+Worse in a quiet way: the POST handler indexes the new file directly
+instead of waiting for the watcher, and that direct call bypassed
+chokidar's ignore filter, so the `.git` file *appeared in
+`/api/attachments`* — a path the index is supposed to never show.
+
+Fixed by rejecting any upload whose path contains a segment in the same
+`cfg.ignore` list `walk()` uses, so the two cannot drift. Re-tested:
+`.git`, `.git/hooks`, `notes/.git`, `.obsidian/plugins/x`,
+`node_modules/evil`, `.trash`, and a *file* literally named `.git` are
+all 400, and nothing lands. The rule is also just coherent — the index
+ignores those paths, so an upload there is invisible by construction. An
+endpoint whose only honest outcomes are "does nothing useful" and
+"compromises the machine" shouldn't exist.
+
+**Got wrong on the first try, in the other direction:** the filename
+check rejects any name containing `/` or `\` rather than quietly
+basenaming it, on the reasoning that silently rewriting
+`../../etc/passwd` to `passwd` writes a file the caller never asked for.
+Testing showed the rejection never fires: `@fastify/busboy` runs its own
+`basename()` over the Content-Disposition filename first, so
+`../escaped.bin` arrives as `escaped.bin` and is accepted as a normal
+upload to the named folder. Nothing escapes, but the check is currently
+unreachable rather than load-bearing, and the comment said otherwise.
+Comment corrected to say so. The check stays: it is two lines, and "the
+parser happens to do it for us" is not a property to depend on silently.
+
+**Accepted, not fixed, deliberately:** `folder=/tmp` writes to
+`<vault>/tmp/`, and an absolute path writes a deep junk directory tree
+inside the vault. That is `safeRelPath` stripping leading slashes, the
+same behaviour `PUT /api/note` has had all along. Ugly, contained, and
+consistent; diverging from the shared helper for one endpoint seemed
+worse than the junk directory.
+
+### Stored XSS — the finding that isn't traversal
+
+The easy one to miss here, and the one that actually matters most: an
+uploaded `.html`, `.svg` or `.xhtml` served inline with its natural
+Content-Type executes JavaScript **on the panel's own origin** — the
+origin that can rewrite every note through `PUT /api/note` and fire
+`correr_script`. Traversal gets you a file; this gets you the whole app.
+
+The download endpoint therefore serves a conservative allowlist with
+real types and `inline` (raster images, PDF, plain text — **not** SVG,
+which is an XML document that can carry `<script>`) and everything else
+as `application/octet-stream` with `Content-Disposition: attachment`,
+plus `X-Content-Type-Options: nosniff` on every response and a
+`default-src 'none'; sandbox` CSP on the non-inline branch.
+
+Verified in a real browser, not from the headers:
+
+- Control first, so the test could fail: the same probe file served with
+  `text/html` by a plain `python3 -m http.server` executed and set
+  `document.title` to `XSS-EXECUTED-HTML`. The detection method works.
+- Sitting on the panel's own origin with a marker variable set,
+  navigating to `/api/attachment?path=probe.html` left the document
+  untouched — same URL, marker intact, title unchanged, probe's variable
+  never defined. The file downloaded; no document was ever created on
+  that origin. Same for `probe.svg`.
+- Same result through an `<iframe>`, which is the shape a frontend
+  preview would reach for: both frames came back empty, parent origin
+  untouched. Controlled again with a same-origin `srcdoc` iframe running
+  the identical script, which did execute — so the empty frames are a
+  real negative, not a broken harness.
+
+Probes set `document.title` rather than calling `alert()` on purpose: a
+modal would have frozen the browser session mid-test.
+
+### Left undone
+
+- `@fastify/multipart@9.4.0` is declared in `panel/server/package.json`
+  but was installed into the main checkout's `panel/node_modules` with
+  `--no-save --no-package-lock` (this worktree symlinks to it). The
+  workspace `package-lock.json` does **not** have it yet — whoever merges
+  this needs a plain `npm install` in `panel/` to lock it.
+- No `Range` support on the download endpoint. Fine for the PDFs and
+  spreadsheets driving this; video seeking would need it.
+- `tricks-spec.md`'s trust-boundary section still describes three
+  constraints on `correr_script` and does not mention that *who can
+  declare a script* is a fourth, now that an upload endpoint exists. The
+  code enforces it; the spec doesn't say it. Not edited this pass —
+  `panel/docs/` was outside this task's scope and a parallel agent is
+  working nearby — but it should be, and the omission is the exact shape
+  of the assumption that caused the bug.
+- Attachments are absent from `/api/health/vault`. Broken links, slug
+  collisions and frontmatter are all note concepts; "an attachment
+  nothing links to" is a plausible future check, not one designed here.

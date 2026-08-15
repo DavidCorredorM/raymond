@@ -1,14 +1,40 @@
+/**
+ * The panel's whole HTTP surface. Twelve endpoints:
+ *
+ *   GET  /api/health              is it up, and what is it indexing
+ *   GET  /api/notes               every note, no bodies — the sidebar
+ *   GET  /api/note?path=          one note: body, frontmatter, backlinks
+ *   PUT  /api/note                write one note (the only note write path)
+ *   GET  /api/attachments         every non-.md file in the vault
+ *   GET  /api/attachment?path=    one attachment's raw bytes
+ *   POST /api/attachment          upload one attachment (multipart)
+ *   GET  /api/graph               the full link graph in one call
+ *   GET  /api/health/vault        broken links, slug collisions, frontmatter
+ *   GET  /api/tricks              every valid trick manifest, summarized
+ *   GET  /api/tricks/:name        one trick's full manifest
+ *   POST /api/tricks/:name/run    run one pre-declared action (code execution)
+ *
+ * No endpoint here does anything a human couldn't do by editing a file
+ * directly — the API is a faster path to the same filesystem, not a
+ * separate capability (README, "The vision"). The two exceptions to
+ * "boring" are `POST /api/tricks/:name/run` (runs code) and
+ * `POST /api/attachment` (puts a file on the disk); both have a written
+ * trust boundary — `tricks.ts` and `attachments.ts` respectively —
+ * because there is no authentication in front of any of this.
+ */
 import Fastify from "fastify";
 import fastifyStatic from "@fastify/static";
+import fastifyMultipart from "@fastify/multipart";
 import chokidar from "chokidar";
-import { readFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { readFile, copyFile, mkdir, stat } from "node:fs/promises";
+import { existsSync, createReadStream, constants as fsConstants } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "./config.js";
 import {
   buildIndex,
   readNote,
+  readAttachment,
   writeNote,
   deriveMaps,
   brokenLinks,
@@ -16,15 +42,47 @@ import {
   isNote,
   resolveLink,
   safeRelPath,
+  resolveInVault,
   type VaultIndex,
 } from "./vault.js";
 import { listTricks, readTrickManifest, runTrickAction, TrickError } from "./tricks.js";
+import {
+  AttachmentError,
+  assertNotSymlink,
+  assertRealPathInVault,
+  resolveUploadTarget,
+  servePolicy,
+} from "./attachments.js";
 
 const cfg = loadConfig();
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? "info" } });
 
+/**
+ * `limits` here is the size limit, and it is enforced *by the parser as
+ * it streams* — busboy stops feeding the file stream at `fileSize` and
+ * raises FST_REQ_FILE_TOO_LARGE. Checking the size after the fact would
+ * mean a 4 GB body was already read into memory or onto the disk before
+ * anyone objected, which is the denial-of-service the limit exists to
+ * prevent, not a defence against it.
+ *
+ * `files: 1` matches the contract (one file part per request). The field
+ * limits bound the non-file half of the body, which is otherwise an
+ * unbounded thing anything on the tailnet can send.
+ */
+await app.register(fastifyMultipart, {
+  limits: {
+    fileSize: cfg.maxUploadBytes,
+    files: 1,
+    fields: 8,
+    fieldSize: 4096,
+    parts: 16,
+  },
+});
+
 let index: VaultIndex = await buildIndex(cfg.vaultDir, cfg.ignore);
-app.log.info(`Indexed ${index.notes.size} notes from ${cfg.vaultDir}`);
+app.log.info(
+  `Indexed ${index.notes.size} notes and ${index.attachments.size} attachments from ${cfg.vaultDir}`,
+);
 
 // The vault is edited by Obsidian, by agents writing files, and by this
 // app. Watching the filesystem is the only way all three stay consistent.
@@ -35,8 +93,25 @@ const watcher = chokidar.watch(cfg.vaultDir, {
 });
 
 async function refresh(path: string, removed = false) {
-  if (!path.endsWith(".md")) return;
   const rel = path.slice(cfg.vaultDir.length + 1).split("\\").join("/");
+
+  // Attachments go in the other map. This used to be an early return on
+  // anything that isn't `.md`, which was correct when the index only
+  // held notes — left as-is it would mean an uploaded PDF stays
+  // invisible until the process restarts, and a deleted one stays
+  // listed and 404s on download. Same reason the watcher exists at all:
+  // this process is only one of the three things writing to the vault.
+  if (!path.endsWith(".md")) {
+    try {
+      if (removed) index.attachments.delete(rel);
+      else index.attachments.set(rel, await readAttachment(cfg.vaultDir, rel));
+      app.log.debug(`reindexed attachment ${rel}`);
+    } catch (err) {
+      app.log.warn({ err, rel }, "attachment reindex failed");
+    }
+    return;
+  }
+
   try {
     if (removed) index.notes.delete(rel);
     else index.notes.set(rel, await readNote(cfg.vaultDir, rel));
@@ -59,6 +134,7 @@ app.get("/api/health", async () => ({
   ok: true,
   vault: cfg.vaultDir,
   notes: index.notes.size,
+  attachments: index.attachments.size,
 }));
 
 /**
@@ -122,6 +198,229 @@ app.put<{ Body: { path?: string; content?: string } }>(
     return { ok: true, path: rel };
   },
 );
+
+/**
+ * Every non-`.md` file in the vault (roadmap #9) — the same tree as the
+ * notes, not a second blessed location, because "the vault is the only
+ * thing the panel knows about" is rule 1 and forking it for PDFs would
+ * have been the start of a second file system.
+ *
+ * `isSystem` is `isNote()`, the exact predicate `/api/notes` uses, for
+ * the exact same reason: one set of path rules, in one place. An image
+ * under `.claude/tricks/` is plumbing; a scan sitting next to the note
+ * it belongs to is not, and the frontend should not be re-deriving that
+ * distinction from a second list of prefixes that drifts.
+ */
+app.get("/api/attachments", async () =>
+  [...index.attachments.values()]
+    .sort((a, b) => b.mtime - a.mtime)
+    .map(({ path, size, mtime }) => ({
+      path,
+      size,
+      mtime,
+      isSystem: !isNote(path),
+    })),
+);
+
+/**
+ * One attachment's raw bytes.
+ *
+ * Membership in the attachment index is the primary gate, not a
+ * convenience: `walk()` never indexes a symlink, so "is it in the index"
+ * already answers "is it a real file that is really inside the vault."
+ * The path checks below are the second and third answers to the same
+ * question, kept because the index is a cache and a cache is a thing
+ * that can be wrong.
+ *
+ * The headers are the interesting part. See `servePolicy` in
+ * attachments.ts for why an uploaded `.svg` or `.html` must never come
+ * back with its natural Content-Type: it would execute script on this
+ * origin, which is the origin that can rewrite every note and run
+ * `correr_script`. `nosniff` is what stops a browser from deciding for
+ * itself that our `application/octet-stream` is really HTML.
+ */
+app.get<{ Querystring: { path?: string } }>(
+  "/api/attachment",
+  async (req, reply) => {
+    if (!req.query.path) return reply.code(400).send({ error: "path required" });
+    let rel: string;
+    try {
+      rel = safeRelPath(req.query.path);
+    } catch {
+      return reply.code(400).send({ error: "unsafe path" });
+    }
+    if (!index.attachments.has(rel)) {
+      return reply.code(404).send({ error: "not found" });
+    }
+
+    let full: string;
+    try {
+      full = resolveInVault(cfg.vaultDir, rel);
+      await assertRealPathInVault(cfg.vaultDir, full);
+    } catch {
+      return reply.code(400).send({ error: "unsafe path" });
+    }
+
+    let size: number;
+    try {
+      size = (await stat(full)).size;
+    } catch {
+      // Indexed but gone — deleted between the watcher event and now.
+      return reply.code(404).send({ error: "not found" });
+    }
+
+    const policy = servePolicy(rel);
+    reply
+      .header("Content-Type", policy.contentType)
+      .header("Content-Disposition", policy.disposition)
+      .header("Content-Length", String(size))
+      .header("X-Content-Type-Options", "nosniff");
+    if (!policy.inline) {
+      // Belt and braces for everything not on the inline allowlist: even
+      // if a future change got the Content-Type wrong, an opaque-origin
+      // sandbox with no permitted sources cannot script this origin.
+      // Not applied to the inline branch, where it would break the PDF
+      // viewer for no gain — those types cannot script in the first
+      // place, which is exactly why they are on the allowlist.
+      reply.header("Content-Security-Policy", "default-src 'none'; sandbox");
+    }
+    return reply.send(createReadStream(full));
+  },
+);
+
+/**
+ * Upload one file into the vault (roadmap #9). `folder` picks the
+ * destination — `""` is the vault root — which is the API-level shape of
+ * the decision that skill output is filed by *what it is about*, not
+ * dumped in one output folder.
+ *
+ * This is the second endpoint in this codebase that deserved a real
+ * adversarial pass rather than a happy-path test (roadmap #9 says so),
+ * and the reasoning for every check lives in `attachments.ts` next to
+ * the check itself. The short version, in the order they run:
+ *
+ *   parser  — size ceiling, enforced while streaming
+ *   name    — no separators, no NUL, no all-dots, no `.md`
+ *   folder  — safeRelPath, then resolveInVault on the absolute result
+ *   allowed — nothing into .git/, .obsidian/ or .claude/: escalation
+ *             rather than traversal, and an uploaded trick.yaml defeats
+ *             correr_script outright (attachments.ts, assertUploadAllowed)
+ *   symlink — realpath of the deepest existing ancestor, before mkdir
+ *   exists  — 409 unless overwrite=true, then COPYFILE_EXCL to close the
+ *             gap between asking and writing
+ *
+ * Never silently overwrites. An upload that would clobber a file is an
+ * error the caller has to answer for, because the alternative is a
+ * generated report quietly replacing a scan someone can't get back.
+ */
+app.post("/api/attachment", async (req, reply) => {
+  if (!req.isMultipart()) {
+    return reply.code(400).send({ error: "multipart/form-data required" });
+  }
+
+  // Drains the whole request to a temp file outside the vault, so
+  // nothing is written anywhere near the destination until every check
+  // below has passed. Temp files are removed by the plugin's onResponse
+  // hook whether this succeeds or throws.
+  let saved;
+  try {
+    saved = await req.saveRequestFiles();
+  } catch (err) {
+    const code = (err as { code?: string }).code;
+    if (code === "FST_REQ_FILE_TOO_LARGE") {
+      return reply
+        .code(413)
+        .send({ error: `file exceeds the ${cfg.maxUploadBytes} byte limit` });
+    }
+    if (code === "FST_FILES_LIMIT") {
+      return reply.code(400).send({ error: "exactly one file part expected" });
+    }
+    if (code === "FST_PARTS_LIMIT" || code === "FST_FIELDS_LIMIT") {
+      return reply.code(413).send({ error: "too many form parts" });
+    }
+    app.log.warn({ err }, "upload parse failed");
+    return reply.code(400).send({ error: "malformed multipart body" });
+  }
+
+  const file = saved[0];
+  if (!file) return reply.code(400).send({ error: "a file part is required" });
+  // Second, independent read of the same fact: busboy marks the stream
+  // truncated at the limit, and it does so whether or not the error
+  // above fired. The limit is the one check here that protects the disk
+  // rather than the vault's shape, so it gets asked twice.
+  if (file.file.truncated) {
+    return reply
+      .code(413)
+      .send({ error: `file exceeds the ${cfg.maxUploadBytes} byte limit` });
+  }
+
+  // `fields` is populated as the body is parsed, and the body was fully
+  // drained above — so `folder` is found whether the client sent it
+  // before or after the file part. Ordering is not part of the contract.
+  const fieldValue = (name: string): string => {
+    const f = file.fields[name];
+    const one = Array.isArray(f) ? f[0] : f;
+    return one && one.type === "field" ? String(one.value) : "";
+  };
+  const overwrite = fieldValue("overwrite") === "true";
+
+  let target: { rel: string; full: string };
+  try {
+    target = await resolveUploadTarget(
+      cfg.vaultDir,
+      fieldValue("folder"),
+      file.filename,
+      cfg.ignore,
+    );
+  } catch (err) {
+    if (err instanceof AttachmentError) {
+      app.log.warn(
+        { folder: fieldValue("folder"), filename: file.filename, reason: err.message },
+        "upload rejected",
+      );
+      return reply.code(err.statusCode).send({ error: err.message });
+    }
+    throw err;
+  }
+
+  try {
+    await assertNotSymlink(target.full);
+  } catch (err) {
+    if (err instanceof AttachmentError) {
+      return reply.code(err.statusCode).send({ error: err.message });
+    }
+    throw err;
+  }
+
+  if (!overwrite && existsSync(target.full)) {
+    return reply.code(409).send({ error: "file exists", path: target.rel });
+  }
+
+  await mkdir(dirname(target.full), { recursive: true });
+  try {
+    // COPYFILE_EXCL makes the "does it exist" question atomic on the
+    // non-overwrite path — the existsSync above is the friendly answer,
+    // this is the one that can't lose a race with a concurrent upload.
+    await copyFile(
+      file.filepath,
+      target.full,
+      overwrite ? 0 : fsConstants.COPYFILE_EXCL,
+    );
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "EEXIST") {
+      return reply.code(409).send({ error: "file exists", path: target.rel });
+    }
+    throw err;
+  }
+
+  // Index it now rather than waiting on the watcher, so the GET that
+  // follows this POST works. The watcher will see the same file and set
+  // the same entry; that's idempotent, not a double-add.
+  await refresh(target.full);
+  const size = (await stat(target.full)).size;
+  app.log.info({ path: target.rel, size, overwrite }, "attachment uploaded");
+  return { ok: true, path: target.rel, size };
+});
 
 /**
  * The full link graph in one call — every note as a node, every resolved
