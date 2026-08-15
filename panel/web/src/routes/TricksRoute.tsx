@@ -1,25 +1,31 @@
-import { useNotes } from "../api/queries";
+import { Link } from "react-router-dom";
+import { useTricks } from "../api/queries";
 
-// `.claude/tricks/<name>/SKILL.md` is already indexed by GET /api/notes
-// (isSystem: true, same as any .claude/ path) — no backend change needed
-// to know which trick names exist, only to render them, which is
-// explicitly out of scope for this pass (tricks-spec.md, plan §11.4).
-const TRICK_SKILL_RE = /^\.claude\/tricks\/([^/]+)\/SKILL\.md$/;
-
+/**
+ * Real data from `GET /api/tricks` (tricks-spec.md) — replaces the
+ * earlier placeholder that only derived trick *names* from indexed
+ * `SKILL.md` paths. Clicking a card navigates to `TrickDetailRoute`,
+ * which renders the manifest's `ui`/`acciones`.
+ */
 export function TricksRoute() {
-  const { data: notes, isLoading } = useNotes();
+  const { data: tricks, isLoading, isError, error } = useTricks();
 
   if (isLoading) {
     return <p className="muted page-scroll">Loading…</p>;
   }
 
-  const trickNames = new Set<string>();
-  for (const n of notes ?? []) {
-    const m = TRICK_SKILL_RE.exec(n.path);
-    if (m) trickNames.add(m[1]!);
+  if (isError) {
+    return (
+      <div className="note-error page-scroll">
+        <p>Could not load tricks.</p>
+        <p className="muted">{(error as Error).message}</p>
+      </div>
+    );
   }
 
-  if (trickNames.size === 0) {
+  const list = tricks ?? [];
+
+  if (list.length === 0) {
     return (
       <div className="tricks-empty page-scroll">
         <h1>Tricks</h1>
@@ -43,14 +49,19 @@ export function TricksRoute() {
     <div className="tricks-route page-scroll">
       <h1>Tricks</h1>
       <p className="muted">
-        {trickNames.size} trick{trickNames.size === 1 ? "" : "s"} found in this vault. Rendering
-        them isn&apos;t built yet — this pass only ships the route and the empty state.
+        {list.length} trick{list.length === 1 ? "" : "s"} found in this vault.
       </p>
-      <ul>
-        {[...trickNames].sort().map((name) => (
-          <li key={name}>{name}</li>
+      <div className="tricks-grid">
+        {list.map((t) => (
+          <Link key={t.name} to={`/tricks/${encodeURIComponent(t.name)}`} className="trick-card">
+            <div className="trick-card-icon">{t.icono || "⚙️"}</div>
+            <div className="trick-card-body">
+              <div className="trick-card-title">{t.titulo}</div>
+              {t.descripcion && <div className="trick-card-desc muted">{t.descripcion}</div>}
+            </div>
+          </Link>
         ))}
-      </ul>
+      </div>
     </div>
   );
 }

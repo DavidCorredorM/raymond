@@ -8,6 +8,7 @@ import { NoteRoute } from "./routes/NoteRoute";
 import { HealthRoute } from "./routes/HealthRoute";
 import { HomeRoute } from "./routes/HomeRoute";
 import { TricksRoute } from "./routes/TricksRoute";
+import { TrickDetailRoute } from "./routes/TrickDetailRoute";
 
 // react-force-graph-2d pulls in d3-force and pushes the main bundle past
 // the 500kB warning threshold on its own; it's also only needed on one
@@ -55,6 +56,7 @@ const router = createBrowserRouter([
         ],
       },
       { path: "tricks", element: <TricksRoute /> },
+      { path: "tricks/:name", element: <TrickDetailRoute /> },
     ],
   },
 ]);
