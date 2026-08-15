@@ -1,6 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchJSON } from "./client";
-import type { GraphResponse, NoteDetail, NoteSummary, VaultHealth } from "./types";
+import type {
+  GraphResponse,
+  NoteDetail,
+  NoteSummary,
+  TrickManifest,
+  TrickRunResult,
+  TrickSummary,
+  VaultHealth,
+} from "./types";
 
 /**
  * Poll-based freshness (frontend-implementation-plan.md §7 — the server
@@ -61,5 +69,41 @@ export function useSaveNote() {
       queryClient.invalidateQueries({ queryKey: ["note", variables.path] });
       queryClient.invalidateQueries({ queryKey: ["notes"] });
     },
+  });
+}
+
+export function useTricks() {
+  return useQuery({
+    queryKey: ["tricks"],
+    queryFn: () => fetchJSON<TrickSummary[]>("/api/tricks"),
+    refetchInterval: POLL_MS,
+  });
+}
+
+export function useTrick(name: string | undefined) {
+  return useQuery({
+    queryKey: ["trick", name],
+    queryFn: () => fetchJSON<TrickManifest>(`/api/tricks/${encodeURIComponent(name!)}`),
+    enabled: !!name,
+  });
+}
+
+/**
+ * Runs one pre-declared action by index — the client never sends what
+ * the action does (`ruta`/`args`), only which index to run; the server
+ * reads those from its own copy of trick.yaml (tricks.ts). Not a
+ * TanStack Query cache-invalidating mutation like `useSaveNote`: running
+ * a script doesn't change note data the app already caches (unless the
+ * script itself writes a vault file, which the filesystem watcher picks
+ * up on its own next poll).
+ */
+export function useRunTrickAction(name: string) {
+  return useMutation({
+    mutationFn: (actionIndex: number) =>
+      fetchJSON<TrickRunResult>(`/api/tricks/${encodeURIComponent(name)}/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ actionIndex }),
+      }),
   });
 }

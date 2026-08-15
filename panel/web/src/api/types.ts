@@ -61,3 +61,66 @@ export interface GraphResponse {
   nodes: GraphNode[];
   edges: GraphEdge[];
 }
+
+/**
+ * Trick shapes mirrored from `server/src/tricks.ts` (tricks-spec.md).
+ * The backend validates `titulo` (required) and shallow shapes only —
+ * `ui`/`acciones` internals are typed loosely here and each renderer
+ * (like each dashboard widget) parses the piece it actually uses with
+ * its own zod schema.
+ */
+
+/** GET /api/tricks item. */
+export interface TrickSummary {
+  name: string;
+  titulo: string;
+  descripcion?: string;
+  icono?: string;
+}
+
+export interface TrickCorrerScript {
+  ruta: string;
+  args?: string[];
+}
+
+export interface TrickAccionDef {
+  correr_script?: TrickCorrerScript;
+  set?: Record<string, unknown>;
+  crear_nota?: unknown;
+  archivar?: unknown;
+}
+
+export interface TrickAccion {
+  etiqueta?: string;
+  control?: string;
+  accion?: TrickAccionDef;
+  [key: string]: unknown;
+}
+
+/** One entry of `ui.campos` — shape depends on `control`, see tricks-spec.md. */
+export interface TrickCampo {
+  campo?: string;
+  etiqueta?: string;
+  control?: string;
+  [key: string]: unknown;
+}
+
+/** GET /api/tricks/:name — the full parsed trick.yaml manifest. */
+export interface TrickManifest {
+  name: string;
+  titulo: string;
+  descripcion?: string;
+  icono?: string;
+  datos?: unknown;
+  ui?: { layout?: string; campos?: TrickCampo[] };
+  acciones?: TrickAccion[];
+}
+
+/** POST /api/tricks/:name/run */
+export interface TrickRunResult {
+  ok: boolean;
+  stdout: string;
+  stderr: string;
+  exitCode: number | null;
+  timedOut: boolean;
+}
