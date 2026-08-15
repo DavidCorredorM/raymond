@@ -8,7 +8,7 @@ deployments/*
 !deployments/README.md
 
 # panel/ (Node)
-panel/*/node_modules/
+node_modules/
 panel/*/dist/
 *.log
 .env
