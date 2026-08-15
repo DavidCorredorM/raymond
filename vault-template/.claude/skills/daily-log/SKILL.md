@@ -5,14 +5,14 @@ description: Append a session entry to today's daily log in the vault. Use at th
 
 # Daily log
 
-One file per day at `~/raymond-brain/daily/YYYY-MM-DD.md`. Append-only — never
+One file per day at `daily/YYYY-MM-DD.md`. Append-only — never
 rewrite earlier entries.
 
 ## Create the file if today's doesn't exist
 
 ```sh
 DATE=$(date +%F)
-FILE=~/raymond-brain/daily/$DATE.md
+FILE=daily/$DATE.md
 [ -f "$FILE" ] || cat > "$FILE" <<EOT
 ---
 titulo: $DATE

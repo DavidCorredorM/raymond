@@ -33,9 +33,16 @@ today and costs an hour next month.
   Search it before reading any note bodies.
 
 ```sh
-~/raymond-brain/_tools/vault-search <terms>        # metadata tiers first
-~/raymond-brain/_tools/vault-search -l <terms>     # include note bodies
+_tools/vault-search <terms>        # metadata tiers first
+_tools/vault-search -l <terms>     # include note bodies
 ```
+
+Relative to the vault root, not a hardcoded path — this vault might not be
+named `raymond-brain`, and `_tools/vault-search` itself resolves its own
+location rather than assuming any particular vault name (see the comment
+at the top of `_tools/vault-search`). A hardcoded path here silently
+pointed sessions at a stale, unrelated vault once already — see
+`docs/log.md`, 2026-08-15.
 
 `vault-search` ranks by where the match landed: `cuando-usar` beats
 alias beats título beats índice beats etiqueta. A note whose `cuando-usar`

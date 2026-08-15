@@ -14,7 +14,15 @@
 #
 set -uo pipefail
 
-VAULT="${VAULT_DIR:-$HOME/raymond-brain}"
+# The vault is the one containing this tool, not a fixed path. A hardcoded
+# default (was $HOME/raymond-brain, before that $HOME/vault) silently
+# resolves to the wrong vault the moment a deployment is named anything
+# else, or a second vault exists on the same machine — the tool then
+# reports "all clean" against an empty or unrelated directory instead of
+# failing loudly. Found in exactly that shape on 2026-08-15: a leftover
+# ~/vault from an earlier bootstrap run silently absorbed every lint/search
+# call meant for the real vault.
+VAULT="${VAULT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 MODE="${1:---all}"
 
 cd "$VAULT" || { echo "no vault at $VAULT" >&2; exit 1; }

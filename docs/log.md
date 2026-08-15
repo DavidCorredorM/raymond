@@ -768,3 +768,56 @@ boundary. `texto`/`checkbox`/`fecha`/`select` render read-only this pass
 — no single-note binding context yet; `set`/`crear_nota`/`archivar`
 action verbs parse but don't execute yet. Both deferred deliberately, not
 silently dropped.
+
+## [2026-08-15] Backported a better fix from Angela's independent work
+
+While redeploying the tricks build, found that Angela had been running her
+own Claude Code session directly on the server, independent of this one —
+and had ported all 10 SIGRA skills herself (task #1, previously tracked as
+blocked on getting files off her Mac — she just did it via `rsync`).
+
+That session found a real bug in this project's own tooling: `vault-lint`
+and `vault-search` defaulted to `$HOME/vault` (later `$HOME/raymond-brain`
+after today's rename pass) — a **hardcoded** default. A leftover `~/vault`
+directory from an earlier bootstrap run (12 notes, pre-dating the
+companies/ restructure) silently absorbed every lint/search call meant for
+the real vault, so "search the vault before answering" was quietly
+searching the wrong one, and `vault-lint` reported clean because it wasn't
+running against real content at all.
+
+The fix applied on the server is better than what this repo shipped:
+resolve the vault as *wherever this tool itself lives*, not any fixed
+name — `VAULT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)`. This
+closes the bug class entirely rather than just renaming the hardcoded
+value (which is what today's earlier "rename to raymond-brain" pass did —
+a real fix, but not the right one). Backported into
+`vault-template/_tools/vault-lint` and `vault-search`, and converted the
+same hardcoded-path pattern out of `CLAUDE.md` and four skills
+(`capture-note`, `daily-log`, `migrate-notes`, `vault-health`) to relative
+paths, since a Claude Code session runs with the vault as its working
+directory already.
+
+Also verified independently, not just noted: Angela's session moved skill
+credentials (`telegram-credentials.json`) to `~/.config/sigra/` outside
+the vault before they could enter git, backed by a `.gitignore` rule as a
+second line of defense — confirmed via `git log --all` that no
+credential-shaped file was ever committed, at any point in history.
+
+**Process note, stated plainly:** discovered this because my own
+`git add -A && git commit` for a one-line `panel/home.md` addition
+bundled in 59 files of Angela's independent, previously-uncommitted work
+without me reviewing it first. It turned out to be careful, well-labeled
+work — but committing unreviewed content because it happened to be sitting
+in the working tree was not the right process, and got lucky rather than
+being caught by discipline. Read everything before treating it as safe to
+commit, regardless of who or what wrote it.
+
+Task #1 (port SIGRA skills) closed — done, by Angela, independently. Two
+follow-ups remain, both documented in her vault's own `panel/pendientes.md`:
+`/dashboard-competidores` needs its data directory synced from the Mac,
+`/deck-sigra` needs Angela to decide where decks should live without
+iCloud.
+
+**Not yet resolved:** the orphaned `~/vault` directory itself is still
+sitting on the server. Not touched — deleting or archiving another git
+repo isn't a call to make unilaterally.

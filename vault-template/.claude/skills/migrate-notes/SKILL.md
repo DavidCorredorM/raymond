@@ -69,7 +69,7 @@ LFS later means rewriting history.
 ## 6. Build the indexes and check
 
 ```sh
-~/raymond-brain/_tools/vault-lint
+_tools/vault-lint
 ```
 
 Work the findings via the `vault-health` skill until all three say

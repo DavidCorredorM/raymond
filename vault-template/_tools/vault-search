@@ -14,7 +14,10 @@
 #
 set -uo pipefail
 
-VAULT="${VAULT_DIR:-$HOME/raymond-brain}"
+# The vault is the one containing this tool, not a fixed path — see
+# vault-lint's comment on this same line for why a hardcoded default is a
+# real, previously-hit failure mode, not theoretical.
+VAULT="${VAULT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 SCOPE=""
 BODY=false
 
