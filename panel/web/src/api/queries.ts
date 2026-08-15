@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchJSON } from "./client";
 import type { GraphResponse, NoteDetail, NoteSummary, VaultHealth } from "./types";
 
@@ -39,5 +39,27 @@ export function useGraph() {
     queryKey: ["graph"],
     queryFn: () => fetchJSON<GraphResponse>("/api/graph"),
     refetchInterval: POLL_MS,
+  });
+}
+
+/**
+ * Full-file overwrite through the existing `PUT /api/note` — no
+ * partial-write endpoint, no conflict detection (plan §7/§9: autosave and
+ * ETags are both explicitly out of scope). Called only from an explicit
+ * user action (save button, Cmd/Ctrl+S), never on a timer or on keystroke.
+ */
+export function useSaveNote() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ path, content }: { path: string; content: string }) =>
+      fetchJSON<{ ok: true; path: string }>("/api/note", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path, content }),
+      }),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["note", variables.path] });
+      queryClient.invalidateQueries({ queryKey: ["notes"] });
+    },
   });
 }

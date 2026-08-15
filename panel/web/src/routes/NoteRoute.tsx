@@ -1,11 +1,20 @@
-import { useMemo } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
-import { useNote, useNotes } from "../api/queries";
+import { useNote, useNotes, useSaveNote } from "../api/queries";
 import { Markdown } from "../markdown/Markdown";
 import { BacklinksPanel } from "../components/BacklinksPanel";
 import { buildSlugIndex } from "../lib/slugIndex";
 import { stripFrontmatter } from "../lib/frontmatter";
 import { DashboardRenderer, isDashboardFrontmatter } from "../dashboards/DashboardRenderer";
+import { useEditorStore } from "../editor/editorStore";
+import { useUnsavedChangesGuard } from "../editor/useUnsavedChangesGuard";
+
+// CodeMirror + its language/autocomplete packages are a meaningful chunk of
+// weight (same reasoning as react-force-graph-2d in App.tsx) and are only
+// needed once a note is actually opened in edit mode — most page loads
+// never touch them. Code-split rather than pay that weight on every note
+// view.
+const NoteEditor = lazy(() => import("../editor/NoteEditor").then((m) => ({ default: m.NoteEditor })));
 
 function decodePath(splat: string | undefined): string {
   if (!splat) return "";
@@ -27,6 +36,55 @@ export function NoteRoute() {
   const noteQuery = useNote(path || undefined);
   const notesQuery = useNotes();
   const slugIndex = useMemo(() => buildSlugIndex(notesQuery.data ?? []), [notesQuery.data]);
+
+  const [mode, setMode] = useState<"view" | "edit">("view");
+  const saveNote = useSaveNote();
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const storePath = useEditorStore((s) => s.path);
+  const storeContent = useEditorStore((s) => s.content);
+  const storeIsDirty = useEditorStore((s) => s.isDirty);
+  const markSaved = useEditorStore((s) => s.markSaved);
+  // Guard against a stale dirty flag from a note the user already
+  // navigated away from — the store only resets on a genuine note switch
+  // (see NoteEditor's mount effect), so this comparison keeps the toolbar
+  // and the leave-guard scoped to the note actually on screen.
+  const isDirty = storeIsDirty && storePath === path;
+
+  useUnsavedChangesGuard(isDirty);
+
+  // Switching notes always lands back in view mode — edit mode doesn't
+  // carry across notes, only within the same note (toggling view/edit
+  // preserves the buffer, see NoteEditor's mount effect).
+  useEffect(() => {
+    setMode("view");
+    setSaveError(null);
+  }, [path]);
+
+  async function handleSave() {
+    if (!path) return;
+    setSaveError(null);
+    try {
+      await saveNote.mutateAsync({ path, content: storeContent });
+      markSaved();
+    } catch (err) {
+      setSaveError((err as Error).message);
+    }
+  }
+
+  useEffect(() => {
+    if (mode !== "edit") return;
+    function onKeydown(e: KeyboardEvent) {
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        void handleSave();
+      }
+    }
+    window.addEventListener("keydown", onKeydown);
+    return () => window.removeEventListener("keydown", onKeydown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, path, storeContent]);
 
   if (!path) {
     return <p className="muted">No note selected.</p>;
@@ -53,7 +111,30 @@ export function NoteRoute() {
     <div className="note-route">
       <article className={"note-content" + (isDashboard ? " note-content-wide" : "")}>
         <header className="note-header">
-          <h1>{note.title}</h1>
+          <div className="note-header-top">
+            <h1>{note.title}</h1>
+            <div className="note-editor-toolbar">
+              {mode === "edit" && (
+                <>
+                  <span className={"dirty-indicator" + (isDirty ? " dirty" : "")}>
+                    {isDirty ? "Unsaved changes" : "Saved"}
+                  </span>
+                  <button
+                    type="button"
+                    className="save-button"
+                    onClick={handleSave}
+                    disabled={!isDirty || saveNote.isPending}
+                  >
+                    {saveNote.isPending ? "Saving…" : "Save"}
+                  </button>
+                </>
+              )}
+              <button type="button" className="mode-toggle" onClick={() => setMode(mode === "edit" ? "view" : "edit")}>
+                {mode === "edit" ? "View" : "Edit"}
+              </button>
+            </div>
+          </div>
+          {saveError && <p className="note-error">Save failed: {saveError}</p>}
           <div className="note-meta">
             <span title={path}>{path}</span>
             <span> · </span>
@@ -75,9 +156,38 @@ export function NoteRoute() {
             </details>
           )}
         </header>
-        <Markdown content={stripFrontmatter(note.content)} slugIndex={slugIndex} />
-        {isDashboard && (
-          <DashboardRenderer widgets={note.frontmatter.widgets} notes={notesQuery.data ?? []} />
+        {mode === "edit" ? (
+          <div className="note-editor-wrap">
+            <Suspense fallback={<p className="muted">Loading editor…</p>}>
+              {/*
+                Toggling view/edit fully unmounts and remounts NoteEditor
+                (it's conditionally rendered, not just hidden), which
+                destroys CM6's internal EditorState — @uiw/react-codemirror
+                only ever uses `value` to construct a *new* document at
+                mount, it doesn't resync from an external store afterward
+                (that resync is exactly the feedback loop plan §2.3
+                warns against). So a plain `note.content` here would
+                silently discard an in-progress edit every time the user
+                switched to view and back. Seed from the editorStore's
+                buffer instead, when it already holds this note's
+                in-progress edit — still a one-shot prop at construction
+                time, never round-tripped through onChange.
+              */}
+              <NoteEditor
+                key={note.path}
+                path={note.path}
+                initialContent={storePath === note.path ? storeContent : note.content}
+                notes={notesQuery.data ?? []}
+              />
+            </Suspense>
+          </div>
+        ) : (
+          <>
+            <Markdown content={stripFrontmatter(note.content)} slugIndex={slugIndex} />
+            {isDashboard && (
+              <DashboardRenderer widgets={note.frontmatter.widgets} notes={notesQuery.data ?? []} />
+            )}
+          </>
         )}
       </article>
       <BacklinksPanel backlinks={note.backlinks} notes={notesQuery.data ?? []} />
