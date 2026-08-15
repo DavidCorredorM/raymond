@@ -171,25 +171,32 @@ enforced server-side, none optional:
 ### What actually runs, and when the result appears
 
 A manually clicked `boton` runs the script **immediately** and shows the
-result inline — stdout, exit code, success or failure. No proposal queue,
-no approval step: a human clicking the button *is* the approval, the same
-reasoning the scheduling section below already applies to
-`requiere_llm: false` scheduled scripts. If the script writes to a vault
-file, that file updates through the normal filesystem watcher like any
-other change — no special-casing needed.
+result inline — stdout, exit code, success or failure. No queue, no
+staging step: the result of the run *is* the record, visible where it was
+triggered. If the script writes to a vault file, that file updates
+through the normal filesystem watcher like any other change — no
+special-casing needed.
+
+Note what the constraints above are and aren't grounded in. They exist
+because **this app has no auth** (README rule 3) — the tailnet is the
+perimeter, so anything on it can press this button. They are *not* a
+consequence of wanting a human in the loop; README rule 4 no longer asks
+for one. The allowlist, `execFile`, and the timeout would all still be
+required if every run were unattended, which is exactly the case the
+scheduling section below now covers.
 
 If a script needs to call Claude (summarizing, judgment calls, anything
 an LLM does that a deterministic script can't), that is **not** a
 `correr_script` action from a button — see `requiere_llm: true` below.
 Manual-click direct execution is for deterministic code only.
 
-## Scheduling — the part that reopens a closed decision
+## Scheduling
 
-**Flagging explicitly:** the project decided against unattended scheduled
-agents (spend, permission, runaway-loop risk — `docs/roadmap.md`
-context). A general "any trick can schedule anything" capability
-reintroduces exactly that surface if left unconstrained. This spec
-narrows it rather than reopening it wholesale:
+Updated 2026-08-15, when README rule 4 was reversed. This section
+previously argued that unattended scheduled agents were a closed decision
+and that a scheduled trick needing Claude must propose rather than apply.
+Neither holds now: **scheduled unattended runs are a first-class feature**,
+and what the run owes is a file trail, not an approval.
 
 ```yaml
 programacion:
@@ -198,25 +205,30 @@ programacion:
   requiere_llm: false            # true only if the action needs Claude
 ```
 
-- **`requiere_llm: false`** — a scheduled action that's pure data logic
-  (e.g. "flag todos past their `vence` date") runs as a plain script via
-  a systemd timer. No LLM call, no spend risk, no runaway loop possible —
-  it's deterministic code with a fixed cost per run, the same risk
-  profile as any cron job.
-- **`requiere_llm: true`** — a scheduled action that needs Claude (e.g.
-  "summarize this week's completed todos") invokes `claude -p` the same
-  way the SIGRA skill port will, **and defaults to proposing, not
-  applying** — it writes its output to `panel/pendientes.md`-style inbox
-  note or the dashboard's existing proposal/approve pattern (plan §5.5,
-  roadmap #7), never edits vault notes directly, unless a user explicitly
-  marks that specific trick `auto_aplicar: true` after seeing it run
-  correctly a few times. This is the same "agent proposes, human
-  approves" principle the roadmap already commits to — tricks don't get
-  a quieter path around it just because they're user-authored.
+- **`requiere_llm: false`** — the action is pure data logic (e.g. "flag
+  todos past their `vence` date"). Deterministic, fixed cost per run.
+  **Prefer this whenever it's sufficient** — an agent run for something a
+  script can do is slower, costlier and less predictable, and that
+  preference is about engineering, not safety.
+- **`requiere_llm: true`** — the action needs Claude (e.g. "summarize
+  this week's completed todos"), so the run is `claude -p` in the vault.
+  It may write vault notes directly. What it must do instead of asking
+  permission is leave a trail: append a dated line with its exit code to
+  the job's note under `.claude/jobs/`, and put its real output next to
+  what it's about (roadmap §9).
 
-Materializing `programacion` into actual systemd timers is server-side
-work, not designed here — noted as a dependency for whoever implements
-scheduling, not assumed solved.
+A proposal/inbox flow is still a perfectly good *choice* for an action
+whose output a human wants to skim before it lands (roadmap #7, plan
+§5.5). It is a preference a trick's author can set, not a gate the
+system imposes.
+
+**Do not build a second scheduling mechanism here.** `programacion` is a
+declaration; materializing it is the `schedule-job` skill's job
+(`vault-template/.claude/skills/schedule-job/`), which writes a cron
+entry and the vault-side registry note. That skill also documents why
+cron rather than systemd timers. A trick with a `programacion` block
+should be scheduled by running `schedule-job` against it, so a trick's
+job and a hand-written one appear in exactly one registry.
 
 ## The trick-creator skill
 
@@ -229,7 +241,9 @@ declarative system this spec defines.
 
 ## Open, not decided here
 
-- Exact systemd-timer materialization for `programacion`
+- Whether the panel should read a trick's `programacion` block at all, or
+  only ever the `.claude/jobs/` registry `schedule-job` maintains — two
+  places claiming to say when something runs is a drift risk
 - Whether `lista`/`formulario` need pagination once a trick's `data/`
   folder gets large
 - The v2 sandboxed escape hatch (deliberately deferred, see above)

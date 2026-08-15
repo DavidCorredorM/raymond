@@ -17,11 +17,14 @@ with their own subscription and brings their own vault remote.
 
 Deliberately not included:
 
-- **Scheduled or unattended agents.** An agent running 24/7 without
-  someone watching introduces spend, permission and runaway-loop
-  problems that are a project of their own. Out of scope here.
 - **Anything needing an account.** The script installs Tailscale and
   Claude Code but authenticates neither.
+- **Any scheduled jobs.** Not because unattended runs are out of scope —
+  they are a first-class feature (README rule 4) — but because a job is
+  personal, not machine-level. Set one up with the `schedule-job` skill
+  once the vault exists and Claude Code is authenticated; `cron` and
+  `flock` are already on a stock Ubuntu install, so nothing here needs to
+  install anything for it.
 
 ## What the script installs
 
@@ -148,6 +151,11 @@ systemctl is-enabled unattended-upgrades
   fine. The script now also symlinks into `/usr/local/bin`, which is on
   the default non-interactive `PATH`. `source ~/.bashrc` does **not**
   fix this in a non-interactive shell, for the same reason.
+
+  **`cron` has the same problem and the symlink is not always enough** —
+  cron's `PATH` defaults to roughly `/usr/bin:/bin`, which excludes
+  `/usr/local/bin`. Set `PATH` explicitly at the top of the crontab. The
+  `schedule-job` skill does this; see its "Cron pitfalls" section.
 - **Script re-run does nothing visible.** Correct — it's idempotent and
   prints `(already done: ...)` for steps it skips.
 - **`npm install -g` fails on permissions.** The prefix step didn't

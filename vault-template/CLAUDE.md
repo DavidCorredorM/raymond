@@ -147,7 +147,8 @@ vault/
 ├── _tools/            vault-search, vault-lint
 └── .claude/
     ├── skills/         Claude Code skills — see below
-    └── tricks/         skill + UI plugins the panel renders — see below
+    ├── tricks/         skill + UI plugins the panel renders — see below
+    └── jobs/           scheduled jobs: one note + one runner each — see below
 ```
 
 This is a starting shape, not a fixed one. If your vault covers more than
@@ -205,7 +206,7 @@ links rot.
 
 ## Skills
 
-Five, in `.claude/skills/`. Claude Code loads their descriptions at
+Six, in `.claude/skills/`. Claude Code loads their descriptions at
 startup and fires them when a task matches:
 
 | Skill | Fires when |
@@ -215,9 +216,25 @@ startup and fires them when a task matches:
 | `vault-health` | after an import, or when things feel messy |
 | `migrate-notes` | bringing an existing vault in |
 | `trick-creator` | the user wants a UI for something they'll track or manage regularly |
+| `schedule-job` | the user wants something to run on a schedule, or asks what's scheduled |
 
 Keep the total under about a dozen. Every skill costs context whether it
 is used or not.
+
+## Scheduled jobs
+
+This machine can run work unattended — overnight, weekly, whenever — and
+that is intended, not a risk being tolerated. What a scheduled run owes
+is a **file trail**: the job is a note in `.claude/jobs/`, every run
+appends a dated line with its exit code to that note, and the work itself
+lands as files. Nothing a job did while nobody was watching should be
+invisible the next morning.
+
+`.claude/jobs/index.md` lists what's scheduled. Use the `schedule-job`
+skill to add, change or remove one — never hand-edit the crontab, and
+never point a job's output at a generic "outputs" folder. Output belongs
+next to whatever it's about, chosen the way a person filing that document
+by hand would choose.
 
 ## Tricks
 

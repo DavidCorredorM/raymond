@@ -87,6 +87,32 @@ fallback path when Tailscale itself is the thing that's broken.
 Tailscale was already installed on the Mac before this project started;
 it just needed logging in.
 
+## Scheduled unattended runs: yes, with a mandatory file trail
+
+Decided 2026-08-15, **reversing** the position taken on 2026-08-11
+("infrastructure only… no cron, no scheduled jobs, no unattended agent",
+`docs/log.md`) and the README rule that followed from it.
+
+The original reasoning was about spend, permissions and runaway loops.
+That reasoning wasn't wrong, but it was answering the wrong question: a
+box whose whole premise is being always-on is not delivering much if it
+only ever acts while someone is watching it. Scheduled runs are now a
+first-class feature, and the concrete risks get concrete answers instead
+of a prohibition — a per-run cost ceiling (`--max-budget-usd`), a
+wall-clock `timeout`, an explicit tool allowlist, and `flock` so runs
+can't pile up.
+
+What replaces the prohibition is an **auditability** requirement, which
+is rule 1 (files are the only state) applied to time: a job is a note in
+`.claude/jobs/`, each run appends a dated line with its exit code, and
+output lands as files. Nothing done overnight is invisible in the
+morning, and `git log` covers the rest.
+
+Mechanism: cron, not systemd timers — one inspectable text file per
+machine, versus two unit files per job plus `enable-linger` (which this
+project has already been bitten by). Full reasoning and the case that
+would flip it in `vault-template/.claude/skills/schedule-job/SKILL.md`.
+
 ## Open questions
 
 Deferred until the OS is up, since neither changes the install:
