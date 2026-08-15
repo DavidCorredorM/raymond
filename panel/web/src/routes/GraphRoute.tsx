@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import ForceGraph2D, { type LinkObject, type NodeObject } from "react-force-graph-2d";
 import { useNavigate } from "react-router-dom";
 import { useGraph } from "../api/queries";
@@ -142,20 +142,42 @@ function endpointId(end: LinkObject<GraphNodeDatum>["source"]): string | undefin
 export function GraphRoute() {
   const { data, isLoading, isError, error } = useGraph();
   const navigate = useNavigate();
-  const containerRef = useRef<HTMLDivElement>(null);
+  const observerRef = useRef<ResizeObserver | null>(null);
   const [size, setSize] = useState({ width: 600, height: 400 });
   const [hoveredId, setHoveredId] = useState<string | null>(null);
 
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
+  /**
+   * A callback ref, not `useRef` + `useEffect([])`. The effect version ran
+   * on the first commit — while `useGraph()` was still loading and this
+   * component had returned the "Loading graph…" paragraph instead of the
+   * container. `containerRef.current` was null, the effect bailed, and an
+   * empty dependency list meant it never ran again once the real div
+   * mounted, so no observer was ever attached and `size` kept its 600×400
+   * default. A callback ref fires *when the node actually attaches*, which
+   * is the event we care about.
+   *
+   * `observed:` the canvas rendering at 600×400 inside a 2196×1166
+   * container. Not confirmed to be *this* bug's doing: the only browser
+   * available here had the tab backgrounded, where `requestAnimationFrame`
+   * never fires and therefore no ResizeObserver callback is ever delivered
+   * — a hand-attached observer on the same element stayed silent too. That
+   * throttling alone reproduces the same symptom, so the sizing needs one
+   * look in a foreground tab. The defect fixed here is real regardless:
+   * it is visible by reading the effect, not by measuring it.
+   */
+  const containerRef = useCallback((el: HTMLDivElement | null) => {
+    observerRef.current?.disconnect();
+    if (!el) {
+      observerRef.current = null;
+      return;
+    }
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0];
       if (!entry) return;
       setSize({ width: entry.contentRect.width, height: entry.contentRect.height });
     });
     observer.observe(el);
-    return () => observer.disconnect();
+    observerRef.current = observer;
   }, []);
 
   const { graphData, adjacency } = useMemo(() => {

@@ -3,9 +3,12 @@ import { useVaultHealth } from "../api/queries";
 import { noteHref } from "../lib/notePath";
 
 export function HealthRoute() {
-  const { data, isLoading, isError, error } = useVaultHealth();
+  const { data, isPending, isError, error } = useVaultHealth();
 
-  if (isLoading) return <p className="muted">Loading vault health…</p>;
+  // `isPending`, not `isLoading` — see the note in NoteRoute.tsx. With
+  // `data!` on the line below, the difference is a crash during a retry
+  // backoff rather than a loading message.
+  if (isPending) return <p className="muted">Loading vault health…</p>;
   if (isError) return <p className="note-error">{(error as Error).message}</p>;
   const health = data!;
 

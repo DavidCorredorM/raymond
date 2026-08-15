@@ -78,7 +78,13 @@ export function NoteRoute() {
   if (!path) {
     return <p className="muted">No note selected.</p>;
   }
-  if (noteQuery.isLoading) {
+  // `isPending`, not `isLoading`. In TanStack Query v5 `isLoading` is
+  // `isPending && isFetching`, so during the pause between a failed fetch
+  // and its retry, all three of `isLoading`, `isError` and `data` are
+  // falsy — execution fell through to `noteQuery.data!` and the next line
+  // crashed the whole app on `undefined.frontmatter`. `isPending` is true
+  // for the entire no-data period, backoff included.
+  if (noteQuery.isPending) {
     return <p className="muted">Loading…</p>;
   }
   if (noteQuery.isError) {

@@ -17,7 +17,10 @@ export function TrickDetailRoute() {
   if (!name) {
     return <p className="muted page-scroll">No trick selected.</p>;
   }
-  if (trickQuery.isLoading) {
+  // `isPending`, not `isLoading` — see the note in NoteRoute.tsx. With
+  // `trickQuery.data!` below, the difference is a crash during a retry
+  // backoff rather than a loading message.
+  if (trickQuery.isPending) {
     return <p className="muted page-scroll">Loading…</p>;
   }
   if (trickQuery.isError) {
