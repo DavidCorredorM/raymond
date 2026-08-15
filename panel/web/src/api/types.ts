@@ -13,6 +13,8 @@ export interface NoteSummary {
   frontmatter: Record<string, unknown>;
   mtime: number;
   size: number;
+  /** Skills, templates, tooling, CLAUDE.md — not a user's vault content. */
+  isSystem: boolean;
 }
 
 /** GET /api/note?path= — summary plus body and resolved backlinks. */

@@ -809,3 +809,92 @@ listed here only for cross-reference).
 - [Foam — Wiki Links](https://docs.swo.moe/foam-1/wiki-links.html)
 - [Fastify SSE plugin](https://github.com/fastify/sse)
 - Package versions: fetched directly from `registry.npmjs.org/<pkg>/latest` at time of writing.
+
+---
+
+## 11. Addendum (2026-08-15) — information architecture pivot
+
+Phase 1's default landing page (a flat file browser at `/`) was reviewed
+and rejected as the home experience. Three separate destinations,
+reasoning and decisions below.
+
+### 11.1 The problem with a file browser as home
+
+The plan's phase 1 tree also showed `.claude/`, `_templates/`, `_tools/`,
+`CLAUDE.md` mixed in with a user's actual notes — the base package's own
+plumbing, indistinguishable from their content. **Fixed immediately**
+(small, no reason to defer): `GET /api/notes` now returns `isSystem:
+boolean` per note, computed server-side by reusing `isNote()` (`vault.ts`)
+— the same predicate that already governs the health check — rather than
+the frontend re-deriving its own path rules and risking drift from it
+(the exact mistake made and fixed earlier in this project, with the
+shell `vault-lint` vs the TypeScript link resolver — see `docs/log.md`).
+`NoteTree` filters `isSystem` notes out by default, with an explicit
+"show N system files" toggle. Folder collapse/expand also added — plain
+`useState<Set<string>>` of collapsed paths, no library.
+
+### 11.2 New navigation: three destinations, not one
+
+| Destination | Shows | Status |
+|---|---|---|
+| **Home** | A dashboard — same file-backed mechanism as `panel/docs/frontend-implementation-plan.md` §5, just promoted to be the default route instead of a phase-3 add-on | To build |
+| **Vault** | Note tree (done, §11.1) + a graph view (§11.3) | Partially done |
+| **Tricks** | Rendered tricks, per `panel/docs/tricks-spec.md` | To build |
+
+This means **dashboards (plan §5) are pulled forward** — no longer
+something that ships after editing (phase 2a) and actions (phase 4).
+Home cannot be a dashboard without the dashboard renderer existing.
+Scope for the pulled-forward version: `query`, `count`, `vault-health`
+widget kinds only (the three that need no write capability) — `actions`
+(§5.5) still waits for phase 4, since it depends on the editor's
+frontmatter-patch machinery being solid, not just its rendering.
+
+**Empty-state decision:** a brand-new deployment ships one default
+dashboard file in `vault-template/panel/home.md` (recent notes + vault
+health + a pointer to `trick-creator`), so Home is never a blank page on
+day one. It is a normal file — a user can edit or replace it exactly like
+any dashboard they write themselves; nothing about it is hardcoded into
+the app.
+
+### 11.3 Graph view
+
+Obsidian-style: nodes are notes, edges are resolved links, force-directed
+layout. Requested explicitly as part of "the editing and visualization
+half of the project we said we'd build" — this was not in original scope,
+it's new.
+
+**Library: `react-force-graph-2d`.** Canvas rendering, React bindings,
+`d3-force` underneath. This is the library people already use to build
+Obsidian graph-view clones — not a novel choice. Rejected: Sigma.js and
+Cytoscape.js, both built for graphs orders of magnitude larger than a
+personal vault (tens of thousands of nodes, or graph-algorithm workloads
+like pathfinding/centrality) — the wrong tool for "show me how my notes
+connect."
+
+**Backend addition, made directly (not just flagged) — `GET /api/graph`.**
+Returns `{ nodes: [{path, title}], edges: [{from, to}] }`, `isSystem`
+notes excluded, self-loops and duplicate edges deduplicated. Made this one
+directly rather than flagging-and-deferring (contrast §6.5's
+`resolvedLinks`, which stayed a proposal): without it, a graph view means
+fetching all 200+ notes individually to discover their links, which is a
+real N+1 problem, not a nice-to-have. It reuses `resolveLink` against the
+in-memory index already built for `deriveMaps` — no new computation, a
+new shape over existing data. Verified against both the empty
+`vault-template` (5 nodes, 0 edges — correct, those notes don't link each
+other) and a 198-note real vault (1099 edges, zero self-loops, zero
+duplicates).
+
+Click a node → navigate to that note (reuse existing routing). Local
+graph (current note + neighbors) vs global graph (whole vault) — build
+global first; local is a filter over the same data, not a different
+endpoint.
+
+### 11.4 What's now next
+
+One implementation pass covering: the three-destination nav shell, the
+pulled-forward dashboard renderer (3 widget kinds) + shipped default
+`home.md`, and the graph view. Tricks (nav destination 3) gets a route
+and an empty state in this pass; the actual trick primitive renderer
+(`panel/docs/tricks-spec.md` §"v1 primitives") is follow-up work, not
+bundled in — it depends on the same write-action machinery as phase 4
+actions, which doesn't exist yet.
