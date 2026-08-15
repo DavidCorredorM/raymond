@@ -823,28 +823,293 @@ a {
   border-radius: 6px;
 }
 
-.attachment-image {
-  display: block;
-  max-width: 100%;
-  height: auto;
-  margin-top: 16px;
+/* ---------------------------------------------------------------------
+   Attachment previews — the real viewers for PDF, images, SVG, HTML,
+   audio, video and text-ish files (src/preview/). Replaces the
+   `.attachment-image`/`.attachment-pdf`/`.attachment-no-preview` rules
+   that used to close this file: those were a fixed 75vh box, which is
+   most of what "there is no nice PDF previewer" was about.
+
+   Appended as one block, same reason the attachments block above was:
+   several people edit this file at once and reflowing anything earlier
+   is a guaranteed conflict.
+   --------------------------------------------------------------------- */
+
+/* Deliberately *not* height:100% inheritance all the way down. The graph
+   canvas is stuck at 600x400 because its ResizeObserver never reports a
+   real width (see the note in the commit message — the observer effect
+   runs while the container is still behind a loading early-return, and
+   with a [] dependency list it never runs again). Nothing here measures
+   itself in JS: the stage is a flex child that takes the leftover height,
+   so there is no observer to be wrong. */
+.attachment-route {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  height: 100%;
+  min-height: 0;
+}
+
+.attachment-header {
+  flex-shrink: 0;
+  margin-bottom: 0;
+}
+
+/* min-height, not just flex:1 — a short viewport shouldn't squeeze a PDF
+   into a letterbox; past that point `.content` scrolls instead. */
+.attachment-body {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 420px;
+}
+
+.preview {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.preview:fullscreen {
+  width: 100%;
+  height: 100%;
+  border: none;
+  border-radius: 0;
+}
+
+.preview-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+  padding: 6px 8px 6px 12px;
+  background: var(--bg-sidebar);
+  border-bottom: 1px solid var(--border);
+}
+
+.preview-status {
+  font-size: 0.78rem;
+  color: var(--fg-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.preview-button {
+  font: inherit;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  padding: 3px 10px;
+  color: var(--fg);
+  text-decoration: none;
+  white-space: nowrap;
+  background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 6px;
-  /* A photo straight off a phone would otherwise push everything else off
-     the screen. */
-  max-height: 75vh;
+  cursor: pointer;
+}
+
+.preview-button:hover {
+  background: var(--border);
+}
+
+.preview-button[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.preview-button-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.preview-stage {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px;
+}
+
+/* Anything that should reach the edges: iframes, video, the code and table
+   viewers, all of which do their own scrolling inside. */
+.preview-stage-flush {
+  display: block;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* Transparency has to read as transparency in both themes, and a mid-grey
+   flat backdrop hides a white logo as effectively as a white one does. The
+   two greys are picked to sit either side of both palettes' background. */
+.preview-stage[data-backdrop="checker"] {
+  --checker-a: #ffffff;
+  --checker-b: #e6e6e9;
+  background-color: var(--checker-a);
+  background-image:
+    conic-gradient(var(--checker-b) 25%, transparent 0 50%, var(--checker-b) 0 75%, transparent 0);
+  background-size: 18px 18px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .preview-stage[data-backdrop="checker"] {
+    --checker-a: #2a2b30;
+    --checker-b: #202126;
+  }
+}
+
+/* `margin: auto` rather than justify/align-content: centred flex content
+   that overflows its container is unreachable at the top-left, and "actual
+   size" on a large screenshot overflows by definition. */
+.preview-image {
+  margin: auto;
+  max-width: 100%;
+  max-height: 100%;
   object-fit: contain;
 }
 
-.attachment-pdf {
-  display: block;
-  width: 100%;
-  height: 75vh;
-  margin-top: 16px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
+.preview-image-actual {
+  max-width: none;
+  max-height: none;
 }
 
-.attachment-no-preview {
-  margin-top: 16px;
+.preview-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  /* An HTML report that sets no background of its own would otherwise show
+     the panel's dark theme through, which is not what its author saw. */
+  background: white;
+}
+
+.preview-audio {
+  margin: auto;
+  width: min(560px, 100%);
+}
+
+.preview-video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+}
+
+.preview-code {
+  height: 100%;
+}
+
+.preview-code .cm-editor {
+  height: 100%;
+}
+
+.preview-code .cm-scroller {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+}
+
+.preview-raw {
+  height: 100%;
+  margin: 0;
+  padding: 12px 14px;
+  overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  white-space: pre;
+}
+
+.preview-table-scroll {
+  height: 100%;
+  overflow: auto;
+}
+
+.preview-table {
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.preview-table th,
+.preview-table td {
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  text-align: left;
+  white-space: nowrap;
+  vertical-align: top;
+}
+
+/* The header row has to stay put — a 1000-row table you can't read the
+   column names of is the same problem as raw text. */
+.preview-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg-sidebar);
+}
+
+.preview-table-rownum {
+  color: var(--fg-muted);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.preview-table-note {
+  padding: 10px 12px;
+  font-size: 0.8rem;
+}
+
+.preview-empty {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 240px;
+  padding: 32px;
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+}
+
+.preview-empty-name {
+  margin: 0;
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.preview-empty-reason {
+  margin: 0;
+  max-width: 46ch;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.preview-loading {
+  margin: auto;
+}
+
+/* New badge kinds the preview work added to attachmentKind(). */
+.note-tree-ext[data-kind="web"] {
+  color: #e8590c;
+}
+
+.note-tree-ext[data-kind="audio"],
+.note-tree-ext[data-kind="video"] {
+  color: #0c8599;
 }

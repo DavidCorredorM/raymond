@@ -8,9 +8,27 @@
 /** Enforced server-side; repeated here only to write an actionable message. */
 export const UPLOAD_LIMIT_MB = 25;
 
-/** Raw-bytes endpoint. Used as a plain `href`, never fetched. */
+/**
+ * Raw-bytes endpoint. Served inline with an accurate `Content-Type` and
+ * `X-Content-Type-Options: nosniff`; for HTML and SVG the server also sends
+ * `Content-Security-Policy: sandbox allow-scripts`, which puts the response
+ * in an opaque origin even when someone opens this URL directly. Used as an
+ * element `src` for every streamed type, and fetched only for the text-ish
+ * kinds that have to be parsed to be shown (lib/preview.ts).
+ */
 export function attachmentUrl(path: string): string {
   return `/api/attachment?path=${encodeURIComponent(path)}`;
+}
+
+/**
+ * Same bytes, `Content-Disposition: attachment`. The HTML `download`
+ * attribute is only a hint and browsers ignore it in cases that matter here
+ * (a PDF the built-in viewer wants to display, a cross-origin-ish sandboxed
+ * frame), so "Download" asks the server to force it rather than asking the
+ * browser to please.
+ */
+export function attachmentDownloadUrl(path: string): string {
+  return `/api/attachment?path=${encodeURIComponent(path)}&download=1`;
 }
 
 export function baseName(path: string): string {
@@ -32,7 +50,23 @@ export function extensionOf(path: string): string {
   return name.slice(i + 1).toLowerCase();
 }
 
-export type AttachmentKind = "image" | "pdf" | "sheet" | "doc" | "text" | "archive" | "other";
+/**
+ * What the tree badge says a file *is*. Not what the preview route can
+ * *render* — that's `previewKindOf` in lib/preview.ts, and the two disagree
+ * on purpose (a `.csv` is a spreadsheet here and a table there; an `.xlsx`
+ * is a spreadsheet here and nothing there).
+ */
+export type AttachmentKind =
+  | "image"
+  | "pdf"
+  | "web"
+  | "audio"
+  | "video"
+  | "sheet"
+  | "doc"
+  | "text"
+  | "archive"
+  | "other";
 
 const KINDS: Record<string, AttachmentKind> = {
   png: "image",
@@ -42,20 +76,41 @@ const KINDS: Record<string, AttachmentKind> = {
   webp: "image",
   avif: "image",
   bmp: "image",
+  ico: "image",
+  svg: "image",
   pdf: "pdf",
+  html: "web",
+  htm: "web",
+  xhtml: "web",
+  mp3: "audio",
+  wav: "audio",
+  m4a: "audio",
+  ogg: "audio",
+  oga: "audio",
+  flac: "audio",
+  aac: "audio",
+  mp4: "video",
+  webm: "video",
+  mov: "video",
+  m4v: "video",
+  ogv: "video",
   xlsx: "sheet",
   xls: "sheet",
   csv: "sheet",
+  tsv: "sheet",
   ods: "sheet",
   docx: "doc",
   doc: "doc",
   odt: "doc",
   pptx: "doc",
+  ppt: "doc",
+  odp: "doc",
   txt: "text",
   log: "text",
   json: "text",
   yaml: "text",
   yml: "text",
+  xml: "text",
   zip: "archive",
   gz: "archive",
   tgz: "archive",
@@ -64,19 +119,6 @@ const KINDS: Record<string, AttachmentKind> = {
 
 export function attachmentKind(path: string): AttachmentKind {
   return KINDS[extensionOf(path)] ?? "other";
-}
-
-/**
- * Only these preview inline. SVG and HTML are missing from the image list on
- * purpose: the server serves them as downloads because rendering
- * user-uploaded markup on the panel's own origin would be stored XSS
- * (README rule 3 — no auth, the tailnet is the whole perimeter), so a
- * preview here would render a broken image at best and defeat that decision
- * at worst.
- */
-export function canPreviewInline(path: string): boolean {
-  const kind = attachmentKind(path);
-  return kind === "image" || kind === "pdf";
 }
 
 export function formatBytes(bytes: number): string {

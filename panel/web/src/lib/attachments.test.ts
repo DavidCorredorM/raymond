@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  attachmentDownloadUrl,
   attachmentKind,
   attachmentUrl,
   baseName,
-  canPreviewInline,
   describeUploadError,
   extensionOf,
   folderOf,
@@ -16,6 +16,10 @@ describe("path helpers", () => {
     expect(attachmentUrl("companies/sigra/informe final.pdf")).toBe(
       "/api/attachment?path=companies%2Fsigra%2Finforme%20final.pdf",
     );
+  });
+
+  it("asks the server to force the download rather than trusting the download attribute", () => {
+    expect(attachmentDownloadUrl("a/b c.pdf")).toBe("/api/attachment?path=a%2Fb%20c.pdf&download=1");
   });
 
   it("splits name and folder", () => {
@@ -34,28 +38,24 @@ describe("path helpers", () => {
   });
 });
 
-describe("kinds and previewability", () => {
+describe("tree badge kinds", () => {
   it("classifies the types a vault actually accumulates", () => {
     expect(attachmentKind("x.png")).toBe("image");
+    expect(attachmentKind("x.svg")).toBe("image");
     expect(attachmentKind("x.pdf")).toBe("pdf");
+    expect(attachmentKind("x.html")).toBe("web");
+    expect(attachmentKind("x.mp3")).toBe("audio");
+    expect(attachmentKind("x.mp4")).toBe("video");
     expect(attachmentKind("x.xlsx")).toBe("sheet");
     expect(attachmentKind("x.docx")).toBe("doc");
     expect(attachmentKind("x.zip")).toBe("archive");
     expect(attachmentKind("x.bin")).toBe("other");
   });
 
-  it("previews images and PDFs only", () => {
-    expect(canPreviewInline("a/b.png")).toBe(true);
-    expect(canPreviewInline("a/b.pdf")).toBe(true);
-    expect(canPreviewInline("a/b.xlsx")).toBe(false);
-  });
-
-  it("never previews SVG or HTML — the server serves those as downloads", () => {
-    // Rendering uploaded markup on the panel's origin would be stored XSS
-    // (README rule 3: no auth). Guard the decision with a test so a later
-    // "svg is an image, surely" edit has to argue with it.
-    expect(canPreviewInline("logo.svg")).toBe(false);
-    expect(canPreviewInline("report.html")).toBe(false);
+  it("badges a CSV as a spreadsheet even though it previews as a table", () => {
+    // The badge says what a file *is*; previewKindOf says what can render
+    // it. They are allowed to disagree — this pins that they do.
+    expect(attachmentKind("x.csv")).toBe("sheet");
   });
 });
 
