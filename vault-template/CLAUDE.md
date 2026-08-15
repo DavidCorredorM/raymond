@@ -33,8 +33,8 @@ today and costs an hour next month.
   Search it before reading any note bodies.
 
 ```sh
-~/vault/_tools/vault-search <terms>        # metadata tiers first
-~/vault/_tools/vault-search -l <terms>     # include note bodies
+~/raymond-brain/_tools/vault-search <terms>        # metadata tiers first
+~/raymond-brain/_tools/vault-search -l <terms>     # include note bodies
 ```
 
 `vault-search` ranks by where the match landed: `cuando-usar` beats

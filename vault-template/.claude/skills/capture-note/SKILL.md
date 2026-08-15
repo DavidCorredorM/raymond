@@ -8,7 +8,7 @@ description: Write something learned into the vault as a proper note — correct
 ## 1. Check it doesn't already have a home
 
 ```sh
-~/vault/_tools/vault-search <topic words>
+~/raymond-brain/_tools/vault-search <topic words>
 ```
 
 If an existing note covers this, **update that note** instead of creating
@@ -28,7 +28,7 @@ a new one. Duplicates are the main way a vault rots.
 Copy `_templates/note-template.md`. Never write frontmatter from memory.
 
 - **Filename**: descriptive kebab-case, unique across the whole vault.
-  Check with `find ~/vault -name '<basename>.md'` before writing.
+  Check with `find ~/raymond-brain -name '<basename>.md'` before writing.
 - **Title**: the claim, not the topic. `Wi-Fi needs wpa_supplicant`, not
   `Wi-Fi notes`.
 - **`cuando-usar:`**: one sentence answering "when should a future
@@ -50,7 +50,7 @@ before debugging X", not "overview of X".
 ## 6. Verify
 
 ```sh
-~/vault/_tools/vault-lint
+~/raymond-brain/_tools/vault-lint
 ```
 
 All three checks must say `none` before you're done.

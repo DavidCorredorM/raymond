@@ -14,7 +14,7 @@
 #
 set -uo pipefail
 
-VAULT="${VAULT_DIR:-$HOME/vault}"
+VAULT="${VAULT_DIR:-$HOME/raymond-brain}"
 SCOPE=""
 BODY=false
 

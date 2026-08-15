@@ -8,7 +8,7 @@ Wants=network-online.target
 Type=simple
 # Vault path is configuration, never baked into the code. Override with
 #   systemctl --user edit raymond-panel
-Environment=VAULT_DIR=%h/vault
+Environment=VAULT_DIR=%h/raymond-brain
 Environment=PORT=8710
 Environment=NODE_ENV=production
 WorkingDirectory=%h/raymond/panel/server
@@ -26,7 +26,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=%h/vault
+ReadWritePaths=%h/raymond-brain
 ProtectKernelTunables=true
 ProtectControlGroups=true
 RestrictSUIDSGID=true

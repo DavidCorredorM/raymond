@@ -14,7 +14,7 @@
 #
 set -euo pipefail
 
-VAULT_DIR="${VAULT_DIR:-$HOME/vault}"
+VAULT_DIR="${VAULT_DIR:-$HOME/raymond-brain}"
 NODE_MAJOR=22
 WITH_CADDY=false
 

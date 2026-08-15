@@ -32,7 +32,7 @@ Deliberately not included:
 | Network | Tailscale |
 | Agent | Node.js 22, Claude Code |
 | Serving | Caddy — optional, `--with-caddy` |
-| Vault | Skeleton at `~/vault`, git-initialised |
+| Vault | Skeleton at `~/raymond-brain`, git-initialised |
 
 ## Run it
 
@@ -79,8 +79,8 @@ Authenticates against your own subscription.
 **3. Vault remote**
 
 ```sh
-git -C ~/vault remote add origin <YOUR_PRIVATE_REPO>
-git -C ~/vault push -u origin main
+git -C ~/raymond-brain remote add origin <YOUR_PRIVATE_REPO>
+git -C ~/raymond-brain push -u origin main
 ```
 
 **Private repo.** A vault is personal notes.
@@ -88,7 +88,7 @@ git -C ~/vault push -u origin main
 ## The vault skeleton
 
 ```
-~/vault/
+~/raymond-brain/
 ├── CLAUDE.md      rules Claude Code loads in every session here
 ├── index.md       map of the vault
 ├── daily/         dated append-only logs
@@ -127,7 +127,7 @@ node -v                       # v22.x
 claude --version
 tailscale status              # lists this machine and your others
 sudo ufw status | head -1     # Status: active
-ls ~/vault                    # skeleton present
+ls ~/raymond-brain                    # skeleton present
 systemctl is-enabled unattended-upgrades
 ```
 

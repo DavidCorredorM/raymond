@@ -14,7 +14,7 @@
 #
 set -uo pipefail
 
-VAULT="${VAULT_DIR:-$HOME/vault}"
+VAULT="${VAULT_DIR:-$HOME/raymond-brain}"
 MODE="${1:---all}"
 
 cd "$VAULT" || { echo "no vault at $VAULT" >&2; exit 1; }

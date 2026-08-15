@@ -8,7 +8,7 @@ description: Check the vault for broken links, folders missing an index, and not
 ## Run the linter
 
 ```sh
-~/vault/_tools/vault-lint
+~/raymond-brain/_tools/vault-lint
 ```
 
 Three checks. All should report `none`.
@@ -35,5 +35,5 @@ reduces the next:
 ## Re-run until clean
 
 ```sh
-~/vault/_tools/vault-lint && echo "vault is clean"
+~/raymond-brain/_tools/vault-lint && echo "vault is clean"
 ```
