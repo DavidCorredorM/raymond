@@ -608,3 +608,47 @@ existed at the new paths.
 `docs/log.md` itself keeps its old `second-brain-panel` mentions in
 historical entries — it's an append-only log of what was true at the
 time, not current-state documentation.
+
+## [2026-08-15] Panel frontend Phase 1 built and verified
+
+Background agent built `panel/web/`: note tree, client-side search,
+rendered notes with resolved `[[wikilinks]]`, backlinks panel, `/health`
+page. Scoped tightly to phase 1 per the plan — no editor, no dashboards,
+no tricks, developed only against the generic `vault-template`, never
+Angela's data.
+
+**Verified independently, not taken on report:**
+- Fresh `npm install` + `npm run build` from a clean worktree — succeeded,
+  no reuse of the agent's own install.
+- Read `Markdown.tsx` directly: the claimed `urlTransform` bug (react-markdown's
+  default sanitizer strips the app's custom `wikilink:` URL scheme,
+  silently rendering all links — resolved or broken — as inert `href=""`
+  anchors) is real, and the fix is narrow and correct: bypasses
+  sanitization only for `wikilink:`, defers to the real sanitizer for
+  everything else. External links get `target=_blank` +
+  `rel="noopener noreferrer"`.
+- Built a fresh 3-note synthetic test vault (not reusing the agent's,
+  which didn't survive the worktree) covering: a resolved bare-slug link,
+  a root-relative link (`[[folder/note-b]]` — deliberately *not*
+  resolved client-side, matching the documented phase-1 scope, not a
+  bug), a genuinely missing target, an aliased link, and a note with no
+  frontmatter. Ran the real backend and frontend dev servers against it,
+  loaded it in an actual browser via `claude-in-chrome`, clicked through:
+  - Tree matched the vault's real structure
+  - Resolved links: solid blue. Root-relative and missing links: dashed
+    red, alias text rendered correctly instead of the raw target
+  - Backlinks panel correct in both directions
+  - `/health` page numbers matched the backend's real
+    `GET /api/health/vault` response exactly (1 broken link, 0
+    collisions, 1 missing-frontmatter note), with a working link back to
+    the source note
+
+Merged clean (fast-forward, no conflicts) into `main` at `5943803`.
+Rebuilt from the merged tree to confirm the merge itself didn't silently
+change anything — byte-identical `dist/` output.
+
+**Not yet done, needed before this reaches Angela's server:** wiring
+`@fastify/static` into `server/index.ts` to actually serve `web/dist/` in
+production (the dependency has been sitting unused since the backend was
+first built). Until then this only runs via `vite dev`, not through the
+systemd service.
