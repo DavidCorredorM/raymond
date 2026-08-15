@@ -49,11 +49,20 @@ of them applied to a specific problem:
    `panel/docs/tricks-spec.md` for what that looks like in practice: the
    client can only select *which* pre-declared script runs, never *what*
    runs — enforced server-side, independent of what the client claims.
-4. **An agent proposes; a human approves.** Decided early and held to
-   since: no unattended scheduled agent runs without a human in the
-   loop. A trick that needs judgment (not just a deterministic script)
-   defaults to writing its output somewhere for review, never editing
-   vault notes directly, until a human has watched it work and opted in.
+4. **Scheduled unattended runs are expected; what they must leave behind
+   is a file trail.** A box that only acts while someone watches it is a
+   chatbot with extra steps — the point of an always-on appliance is that
+   it does work overnight. The non-negotiable part is that nothing it did
+   is invisible the next morning: a scheduled job is a markdown file in
+   the vault (`.claude/jobs/`), every run appends a dated line with its
+   exit code to that job's own note, and the work itself lands as files
+   next to whatever they're about, never in a dump folder
+   (`docs/roadmap.md` §9). This is rule 1 carrying the weight — if files
+   are the only state, a run that left no file didn't happen, and a run
+   that did is auditable with `git log`. The mechanism lives in the
+   `schedule-job` skill (`vault-template/.claude/skills/schedule-job/`).
+   **Reversed 2026-08-15**; this rule previously read "an agent proposes,
+   a human approves." See `docs/log.md` for why.
 5. **The base package and any one deployment are different things, and
    mixing them is a bug every time it's happened.** `vault-template/` is
    what every new install starts from — generic, no company names, no
@@ -82,7 +91,7 @@ doesn't match reality, because it usually won't be the doc that's wrong.
 
 The actual second brain: markdown notes with YAML frontmatter, a
 `CLAUDE.md` that any Claude Code session in the vault loads automatically
-and must follow, five seeded skills, and the tooling (`_tools/`) to keep
+and must follow, six seeded skills, and the tooling (`_tools/`) to keep
 it healthy.
 
 - **`capture-note`** — write something learned as a proper note
@@ -90,6 +99,9 @@ it healthy.
 - **`vault-health`** — find and fix broken links, missing indexes, missing frontmatter
 - **`migrate-notes`** — bring an existing Obsidian vault in, cleaning as it goes
 - **`trick-creator`** — turn a plain-language request into a trick (below)
+- **`schedule-job`** — turn "every Monday at 8am, do X" into a real cron
+  job on the machine, plus the vault files that make its runs visible
+  (rule 4)
 
 `_tools/vault-lint` and `_tools/vault-search` resolve the vault as
 *wherever they themselves live*, not a hardcoded path — this was a real
@@ -149,6 +161,10 @@ Verified by actually running it, not by reading the code and assuming:
 - [ ] Live-preview editing (hide markdown syntax except on the cursor's
       line) — deferred, a genuinely separate chunk of work from the
       plain syntax-highlighted editor that *is* built
+- [ ] Scheduled jobs — the `schedule-job` skill ships (rule 4), but no
+      job has run on the reference build yet, and the panel has no view
+      of what's scheduled or whether it last failed (`docs/roadmap.md`
+      §10)
 - [ ] Vault sync between devices (Syncthing vs. Obsidian LiveSync,
       undecided), a real off-box backup, a git remote for the vault
 

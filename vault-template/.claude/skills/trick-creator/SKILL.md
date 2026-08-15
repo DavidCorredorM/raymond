@@ -78,22 +78,28 @@ there are not optional:
   exits cleanly** rather than faking output or leaving the button broken.
   Tell the user exactly what it's stubbed on.
 
-## 5. Scheduling — ask before adding, and be honest about the two kinds
+## 5. Scheduling — declare it here, install it with `schedule-job`
 
-If the user wants something automatic ("remind me every morning",
-"check for overdue items"), first ask: **does this need Claude to decide
+If the user wants something automatic ("remind me every morning", "check
+for overdue items"), first ask: **does this need Claude to decide
 something, or is it a fixed rule a script can check?**
 
 - A fixed rule ("flag anything past its due date") → `requiere_llm:
-  false`. Cheap, deterministic, no spend risk. Prefer this whenever it's
-  genuinely sufficient.
+  false`. Cheap, deterministic, same answer every time. Prefer this
+  whenever it's genuinely sufficient — an agent run for something a
+  script can do is slower and costlier, and that's an engineering
+  argument, not a safety one.
 - Something needing judgment ("summarize what I got done this week") →
-  `requiere_llm: true`. **This must default to proposing an output for
-  the user to review, never editing their notes directly**, until they've
-  seen it run correctly a few times and explicitly opt into
-  `auto_aplicar: true`. Explain this default to the user in plain terms
-  when you set it up — don't silently make something run unattended
-  without them understanding that's what's happening.
+  `requiere_llm: true`. It may write vault notes directly; unattended
+  runs are expected here (README rule 4). What it owes instead is a file
+  trail — a registry note under `.claude/jobs/` and a line per run with
+  its exit code.
+
+A `programacion:` block in `trick.yaml` is a **declaration**, not an
+installation — nothing runs until the job exists on the machine. Hand off
+to the `schedule-job` skill to create the runner, the registry note and
+the cron entry, so a trick's job lives in the same registry as every
+other job rather than in a second, parallel one.
 
 ## 6. Write the skill itself
 
@@ -106,6 +112,10 @@ panel UI), since the same notes back both.
 
 After creating a trick, say in plain language: what it tracks, where its
 data lives, what they can click in the panel, and — if you added
-scheduling — exactly when it runs and whether it needs their review or
-applies automatically. Someone non-technical should understand this
-without reading YAML.
+scheduling — exactly when it runs, what it changes on its own, and how to
+turn it off. Someone non-technical should understand this without reading
+YAML.
+
+Also: if a `correr_script` action or a scheduled run produces a file, say
+where that file lands. It goes next to what it's *about*, never in a
+generic output folder (`docs/roadmap.md` §9).
