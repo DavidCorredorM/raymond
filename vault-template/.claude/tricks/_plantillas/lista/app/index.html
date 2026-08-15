@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Checklist</title>
+    <!-- Relative paths work. Everything the app loads must be a file
+         under app/ or a data: URI — the frame has no network, so a CDN
+         link, a Google Font or a remote image silently loads nothing. -->
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header>
+      <span id="resumen">Loading…</span>
+      <button id="mostrar-hechos" type="button" class="ligero">Show done</button>
+    </header>
+
+    <!-- Errors are shown, never swallowed. `capability_denied` here means
+         the manifest is missing something the app just tried to do, and
+         the author needs to see exactly that. -->
+    <p id="error" hidden></p>
+
+    <ul id="items"></ul>
+
+    <p id="vacio" hidden>
+      No items yet. An item is a note in this trick's <code>data/</code>
+      folder with <code>tipo: tarea</code> in its frontmatter — copy
+      <code>data/_item.md</code>, or ask in chat.
+    </p>
+
+    <script src="bridge.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

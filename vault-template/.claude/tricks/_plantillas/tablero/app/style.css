@@ -1,0 +1,116 @@
+:root {
+  --fondo: #ffffff;
+  --texto: #1c1c1e;
+  --tenue: #6b7280;
+  --linea: #e5e7eb;
+  --barra: #2563eb;
+  --alerta: #b91c1c;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fondo: #17181b;
+    --texto: #e8e8ea;
+    --tenue: #9aa0a6;
+    --linea: #2c2e33;
+    --barra: #7aa2f7;
+    --alerta: #f28b82;
+  }
+}
+:root[data-tema="claro"] {
+  --fondo: #ffffff;
+  --texto: #1c1c1e;
+  --tenue: #6b7280;
+  --linea: #e5e7eb;
+  --barra: #2563eb;
+  --alerta: #b91c1c;
+}
+:root[data-tema="oscuro"] {
+  --fondo: #17181b;
+  --texto: #e8e8ea;
+  --tenue: #9aa0a6;
+  --linea: #2c2e33;
+  --barra: #7aa2f7;
+  --alerta: #f28b82;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 12px 14px 20px;
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: var(--texto);
+  background: var(--fondo);
+}
+
+header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--linea);
+}
+
+.tenue {
+  color: var(--tenue);
+  font-size: 12px;
+}
+
+#error {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--alerta);
+  color: var(--alerta);
+  font-size: 13px;
+}
+
+/* The SVG scales with the panel column; the app sets viewBox and height. */
+#grafica {
+  display: block;
+  width: 100%;
+  margin: 12px 0 4px;
+}
+
+#grafica .barra {
+  fill: var(--barra);
+}
+
+#grafica .etiqueta,
+#grafica .valor {
+  fill: var(--texto);
+  font: 12px system-ui, sans-serif;
+}
+
+#grafica .valor {
+  fill: var(--tenue);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+td {
+  padding: 4px 2px;
+  border-bottom: 1px solid var(--linea);
+}
+
+td + td {
+  text-align: right;
+  color: var(--tenue);
+  width: 4em;
+}
+
+#vacio {
+  color: var(--tenue);
+}
+
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}

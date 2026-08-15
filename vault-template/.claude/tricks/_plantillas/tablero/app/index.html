@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Notes at a glance</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header>
+      <span id="total">Loading…</span>
+      <!-- Filled in only when `trabajo.estado` is declared. An app that
+           can go stale should say when it was last fed. -->
+      <span id="frescura" class="tenue"></span>
+    </header>
+
+    <p id="error" hidden></p>
+
+    <!-- The chart. An <svg> built by the app, no library, no network.
+         role/aria-label because a bar chart with no text is invisible to
+         a screen reader, and the table below is the real fallback. -->
+    <svg id="grafica" role="img" aria-label="Notes per group"></svg>
+
+    <table id="tabla">
+      <tbody></tbody>
+    </table>
+
+    <p id="vacio" hidden>
+      Nothing to chart — the folder this trick reads has no notes with the
+      grouping field set. Edit <code>carpeta</code> in
+      <code>trick.yaml</code> and <code>AGRUPAR_POR</code> in
+      <code>app/app.js</code>.
+    </p>
+
+    <script src="bridge.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

@@ -22,7 +22,8 @@ set -uo pipefail
 # failing loudly. Found in exactly that shape on 2026-08-15: a leftover
 # ~/vault from an earlier bootstrap run silently absorbed every lint/search
 # call meant for the real vault.
-VAULT="${VAULT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+TOOLS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VAULT="${VAULT_DIR:-$(cd "$TOOLS/.." && pwd)}"
 MODE="${1:---all}"
 
 cd "$VAULT" || { echo "no vault at $VAULT" >&2; exit 1; }
@@ -58,7 +59,11 @@ report() {           # report <heading> — reads findings on stdin
 # ignored, which is worse than having no checker.
 check_links() {
   local out
-  out=$("$(dirname "${BASH_SOURCE[0]}")/linkcheck.py" "$VAULT")
+  # $TOOLS, resolved absolutely before the `cd` above. `dirname
+  # ${BASH_SOURCE[0]}` here would be relative to how the script was
+  # invoked, so `vault-template/_tools/vault-lint` from the repo root
+  # looked for linkcheck.py inside the vault and skipped every link.
+  out=$("$TOOLS/linkcheck.py" "$VAULT")
   printf '\n\033[1m%s\033[0m\n' "Wiki-links rotos"
   echo "$out"
   grep -qx '  none' <<< "$out" || FAILED=1

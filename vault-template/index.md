@@ -20,7 +20,7 @@ cuando-usar: "Empieza aquí. Mapa de todo el vault — léelo antes de buscar a 
 | `_templates/` | Starting points. Copy, never write frontmatter from scratch. |
 | `_tools/` | `vault-search` (tiered search) and `vault-lint` (health check). |
 | `.claude/skills/` | Skills Claude Code loads here: capture-note, daily-log, vault-health, migrate-notes, trick-creator, schedule-job. |
-| `.claude/tricks/` | Skill + UI plugins the panel renders as mini-apps. Made by `trick-creator`. |
+| `.claude/tricks/` | Mini apps the panel renders over the vault — arbitrary HTML/CSS/JS in a sandboxed frame, reaching the vault only through declared capabilities. Made by `trick-creator`; starters to copy in `_plantillas/`. |
 | `.claude/jobs/` | Scheduled jobs — one note and one runner script each, plus a run log per job. Made by `schedule-job`. |
 
 Rules for how to read and write here: `CLAUDE.md`.
