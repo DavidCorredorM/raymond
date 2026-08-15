@@ -41,9 +41,18 @@ and reasons through why it's a flat filter object rather than a query
 language (this app has no auth in front of it — a query language is
 arbitrary power handed to anything that can write a file).
 
+**Re-anchored 2026-08-15, when README rule 4 was reversed.** This item
+used to be load-bearing: an agent *had* to propose because unattended
+application wasn't allowed. That's no longer true — an agent, scheduled
+or not, may write to the vault directly, and what it owes is a file trail
+(§10, and the `schedule-job` skill). A proposal/inbox flow is still worth
+building, but as a **choice** for output someone wants to skim first, not
+as the gate everything passes through. That changes its priority, not its
+design.
+
 Still not designed:
 
-- Where the agent's proposals land before a human approves them —
+- Where an agent's proposals land when a user does want that flow —
   `inbox/` vs a git branch, and what the panel does with either
 - The approve/reject UI and what "reject" does to the underlying file
 - Conflict resolution — the plan explicitly leaves this out of phase 1;
@@ -177,3 +186,66 @@ principle is "next to what it's about," not "wherever's convenient."
   instance of the "organize by what it is, not a dump folder" principle
   above).
 - A PDF or image could preview inline; most other types just download.
+
+## 10. A jobs view in the panel
+
+Opened 2026-08-15 by the reversal of README rule 4. Scheduled unattended
+runs are now a shipped feature (`vault-template/.claude/skills/schedule-job/`),
+and the rule that makes them acceptable is that every run leaves a file
+trail. **Today that trail is only readable by SSHing in or opening
+`.claude/jobs/` in the note tree** — which is most of the way to the
+failure the rule exists to prevent. The panel should show it.
+
+What it needs, all of it reading files that already exist — no new state,
+no database, consistent with rule 1:
+
+- **A jobs list**: every `.claude/jobs/*.md` with a `job:` block in its
+  frontmatter — name, schedule (rendered human-readably, not raw cron),
+  kind (`agent` / `script`), and `enabled`.
+- **Last run and last outcome**, from the run table each runner appends
+  to its own job note (`| timestamp | exit code | duration |`). The
+  parsing target is a markdown table in a note, deliberately — it is
+  the same file a human reads.
+- **Failure is the thing to surface.** A job whose most recent run exited
+  non-zero, or that hasn't run since well past its schedule, should be
+  visible without anyone going looking. A silently dead job is the
+  expensive failure mode.
+- **A tail of the raw log** for one job — this is the `log-tail` widget
+  already sketched at `panel/docs/frontend-implementation-plan.md` §4,
+  phase 5, which until now had nothing to point at.
+
+Open questions, not decided here:
+
+- Whether this is a route (like Tricks) or a widget kind usable in any
+  dashboard. A widget composes better; a route is more discoverable. It
+  could be both, the widget first.
+- Whether the panel ever *writes* here — a pause/resume toggle means the
+  panel editing a crontab, which is a materially different trust boundary
+  from rendering a note, and one this app's no-auth reality (rule 3) says
+  to think hard about. Read-only first is the obvious v1.
+
+## Opened by rule 4's reversal, deliberately not done
+
+Recorded so these are choices rather than oversights:
+
+- **No `programacion` → cron materialization in the panel or server.**
+  A trick can declare a schedule; installing it is `schedule-job`'s job,
+  run by a human or agent in a session. Nothing on the server writes a
+  crontab, and nothing should until there's a reason.
+- **No retry, backoff or alerting.** A failed run is a non-zero exit code
+  in a log and a row in a note. No email, no Telegram, no "job failed 3
+  times" escalation. Adding notification means picking a channel and
+  holding a credential, which is its own decision.
+- **No catch-up after downtime.** Cron simply skips a run if the machine
+  was off (see the `schedule-job` skill's cron-vs-systemd note). If a job
+  ever genuinely must catch up, that job wants a systemd timer with
+  `Persistent=true`, and the registry would need to describe both
+  primitives rather than assuming cron.
+- **No per-job cost accounting.** `--max-budget-usd` caps a single run;
+  nothing sums what a job cost over a month. Worth having before anyone
+  schedules something expensive hourly.
+- **Bootstrap doesn't create any job.** A job is personal, not
+  machine-level (`docs/08-server-setup.md`). A tempting default — nightly
+  `vault-lint`, or an auto-commit-and-push of the vault — was left out
+  on purpose: a fresh install should not start doing things nobody asked
+  for.

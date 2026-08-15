@@ -821,3 +821,132 @@ iCloud.
 **Not yet resolved:** the orphaned `~/vault` directory itself is still
 sitting on the server. Not touched — deleting or archiving another git
 repo isn't a call to make unilaterally.
+
+## [2026-08-15] Rule 4 reversed: scheduled unattended runs are a feature
+
+The owner's call, in his words: *"4 is false. We should allow unattended
+scheduled runs. In fact I believe that in the base skills we should
+include a 'schedule job/skill/prompt' that creates cron jobs inside the
+machine that invoke either skills or scripts. That should be a basic
+thing."*
+
+So README rule 4 — "an agent proposes; a human approves… no unattended
+scheduled agent runs without a human in the loop" — is gone. It now
+reads: **scheduled unattended runs are expected; what they must leave
+behind is a file trail.** A job is a markdown file in `.claude/jobs/`,
+every run appends a dated line with its exit code to that job's note, and
+output lands as files next to whatever it's about. That is rule 1 applied
+to time — if files are the only state, a run that left no file didn't
+happen, and one that did is auditable with `git log`.
+
+Worth being plain about what the old rule was: it was written on
+2026-08-11 as *"no cron, no scheduled jobs, no unattended agent — which
+removes the spend, permission and runaway-loop concerns."* Those concerns
+were real; the mistake was answering them with a prohibition instead of
+with controls. An always-on appliance that only acts while someone
+watches it is a chatbot with extra steps. The controls that replace the
+prohibition are per-run: `--max-budget-usd`, `timeout`, an explicit tool
+allowlist, `flock`.
+
+**Where the old rule was cited but the design still stands, the reasoning
+was re-anchored rather than the design deleted.** `correr_script`'s trust
+boundary in `panel/docs/tricks-spec.md` is the case that matters: the
+allowlist, `execFile`-not-a-shell, and the hard timeout exist because
+**this app has no auth** (rule 3), not because a human was supposed to be
+approving things. Every one of them would still be required if every run
+were unattended. That section now says so explicitly.
+
+Files changed to remove the contradiction: `README.md` (rule 4, the skill
+list, status), `docs/01-decisions.md` (new decision section recording the
+reversal), `docs/08-server-setup.md` ("scheduled agents are out of scope"
+→ they're a feature, just not a machine-level one), `panel/docs/tricks-spec.md`
+(the scheduling section, and the `correr_script` re-anchor above),
+`vault-template/CLAUDE.md`, `vault-template/index.md`, and
+`vault-template/.claude/skills/trick-creator/SKILL.md` (`requiere_llm:
+true` no longer has to propose). The 2026-08-11 log entry stating the
+opposite is left alone — this file is append-only and records what was
+true at the time.
+
+### The `schedule-job` skill
+
+New sixth base skill,
+`vault-template/.claude/skills/schedule-job/SKILL.md`, plus a shipped
+empty registry at `vault-template/.claude/jobs/index.md`. It creates
+three things per job: a runner script, a registry note with a run table
+the runner appends to, and one marked cron block.
+
+**cron, not systemd timers.** A crontab is one text file you can read,
+diff and regenerate in a single command, with the vault registry as the
+source of truth and the crontab as a derived artifact. A timer is two
+unit files per job, a `daemon-reload`, and `loginctl enable-linger` for
+user units — which this project already got bitten by (2026-08-12,
+panel service). The one thing that flips it: `Persistent=true` runs a job
+missed during downtime and cron has no equivalent, so a job that must
+catch up wants a timer. Written down in the skill rather than left as
+folklore.
+
+`.claude/jobs/` is the home for job files specifically because
+`vault-lint` and `linkcheck.py` both skip `.claude/` — the 2026-08-14
+lesson, where an agent brief left inside the vault got its example
+wiki-links counted as broken links and made the run's own gate
+impossible to satisfy.
+
+### Verified, on macOS, by running it
+
+Not the Ubuntu target, so everything below is macOS `cron` (vixie-derived,
+same family as Debian's) and a macOS `claude` build:
+
+- **Cron's PATH really does lose the tools.** With `PATH=/usr/bin:/bin`,
+  both `claude` (at `/usr/local/bin`) and `node` (nvm) resolve to *not
+  found*. With the skill's `export PATH=…` line prepended, `claude
+  --version` runs. This is the pitfall and the fix, both observed.
+- **A real cron run fired** and wrote its log. It confirmed three things
+  at once: the `PATH=` crontab line is honored, `$HOME` expands in the
+  command, and **`PWD` is the home directory, not the vault** — which is
+  why the runner must `cd` before invoking `claude`, or `CLAUDE.md` never
+  loads. `$(date +\%F)` with the escaped `%` came through as `2026-08-15`
+  in both an argument and a redirect filename.
+- **The marked-block crontab edit is safe.** Installed a crontab with two
+  job blocks plus an unrelated entry, removed one job with the skill's
+  `awk` filter, read it back: the other job and the unrelated entry
+  survived untouched, and the `\%` escape survived the
+  `crontab -l` → `crontab -` round trip. The machine's crontab was empty
+  before this and was restored to empty after.
+- **`claude -p` terminates non-interactively** with stdin closed:
+  `claude -p … --output-format text --tools "" --permission-mode
+  bypassPermissions --max-budget-usd 0.20 </dev/null` printed its answer
+  and exited 0 from a stripped environment.
+- **The permission flag is load-bearing, not decorative.** The same
+  `-p` run asked to write a file, in the *default* permission mode with
+  `--tools "Read,Write,Edit"`: no file was created, and the run kept
+  going until `--max-budget-usd` cut it off — `Error: Exceeded USD
+  budget`, exit 1. Re-run with `--permission-mode acceptEdits`: file
+  written, exit 0. That's the concrete evidence for both "nobody is there
+  to answer a prompt" and "the budget ceiling is what ends a wedged run."
+- CLI flags in the skill were read out of `claude --help` on 2.1.220, not
+  recalled: `-p/--print`, `--output-format`, `--permission-mode`
+  (`acceptEdits` / `bypassPermissions` / …), `--allowedTools`,
+  `--max-budget-usd` (print mode only), `--add-dir`, `--tools`, and the
+  `claude setup-token` subcommand.
+
+### Not verified — do this on the box
+
+- **Nothing was run on Ubuntu.** `CRON_TZ` is honored by macOS cron;
+  `assumed:` for Debian/Ubuntu's cron, which supports it but wasn't
+  tested here. `journalctl -u cron` as the place to look when a job never
+  fires is `assumed:` too.
+- **`claude` under cron on the server is untested end to end** — in
+  particular whether a cron-spawned process picks up the interactive
+  login's credentials from `~/.claude`. That is the first thing to check
+  with a two-minutes-out test schedule, and `claude setup-token` is the
+  fallback if it doesn't.
+- `assumed:` `--dangerously-skip-permissions` refuses to run as root, so
+  the skill says not to schedule agent jobs from the root crontab.
+- The runner template passes `bash -n` but was never *executed* end to
+  end: `flock` doesn't exist on macOS at all, so the locking path is
+  untested here. `assumed:` present on Ubuntu — it ships in `util-linux`,
+  which is an essential package. `date -Iseconds` was checked and works
+  on both.
+- No job has actually been created on the reference build. The skill is
+  written and its mechanics are verified in pieces; the first real job is
+  still the first real job.
