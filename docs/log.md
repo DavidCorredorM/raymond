@@ -652,3 +652,60 @@ change anything — byte-identical `dist/` output.
 production (the dependency has been sitting unused since the backend was
 first built). Until then this only runs via `vite dev`, not through the
 systemd service.
+
+## [2026-08-15] Phase 2a — editing built and verified
+
+Ran across two agent sessions (a session-limit interruption mid-task,
+resumed from transcript — no work lost, uncommitted `editor/` folder
+survived in the worktree). Both independently verified before merge,
+same standard as every prior pass.
+
+**Built:** CM6 source-mode editor toggled with the existing read-only
+viewer, save via Cmd/Ctrl+S or a button (`PUT /api/note`, full
+overwrite, no autosave), wiki-link autocomplete on `[[` sourced from the
+cached notes list, a `zustand` dirty-buffer store, a route-leave guard
+(`useBlocker` for in-app nav, native `beforeunload` for tab close), and
+a `Decoration.mark` on `[[wikilinks]]` in the editor (visual only — not
+phase-2b live-preview hiding).
+
+**Real bug found and fixed during the build:** toggling View→Edit→View→Edit
+on the same note silently discarded the in-progress buffer —
+`@uiw/react-codemirror`'s `value` only seeds the document at mount and
+is never resynced, so remounting the editor always reloaded from the
+server. Fixed by feeding the store's buffered content back in as
+`initialContent` on re-entry.
+
+**Structural change made along the way, flagged rather than hidden:**
+`useBlocker` is a no-op under `<BrowserRouter>` — required migrating
+`App.tsx` to `createBrowserRouter`/`RouterProvider`. Confined to `web/`.
+
+**Verified independently, not taken on report** — a fresh synthetic
+2-note vault, real backend + frontend, driven in an actual browser:
+- Real CM6 editor with line numbers and syntax highlighting
+- `[[ban` triggered a genuine autocomplete popup ("banana / Banana"),
+  accepted cleanly to `[[banana]]`, no duplicate brackets
+- **Zero PUT requests** in the backend log across an idle edit —
+  confirmed no autosave
+- Saved, then read the file **directly off disk** (not the UI) and
+  confirmed the new content actually landed; also confirmed via the
+  backend's own request log
+- Triggered the dirty-guard for real: editing then clicking away caused
+  a **genuine blocking native `confirm()`** — screenshot capture itself
+  timed out because the page's JS thread was frozen by the dialog,
+  exactly matching the agent's report. Recovered by closing the tab,
+  same as the agent described. This is about as hard to fake as a claim
+  gets — the tool timeout is independent evidence, not something either
+  agent or verifier could stage.
+
+Server (`panel/server/`) confirmed untouched — `git diff --stat` against
+pre-change commit came back empty.
+
+Merged fast-forward, no conflicts. Rebuilt from merged `main`:
+byte-identical output to the pre-merge verification build.
+
+**Not built, deliberately** (plan §9): phase 2b live-preview
+syntax-hiding, conflict resolution/ETags, structured frontmatter form.
+
+**Known, not yet addressed:** main and NoteEditor JS chunks are both
+over Vite's 500kB warning threshold (560kB / 615kB). Builds and runs
+fine; further code-splitting not pursued this pass.
