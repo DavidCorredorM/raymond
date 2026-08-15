@@ -5,6 +5,7 @@ import { AppShell } from "./routes/AppShell";
 import { VaultShell } from "./routes/VaultShell";
 import { Welcome } from "./routes/Welcome";
 import { NoteRoute } from "./routes/NoteRoute";
+import { AttachmentRoute } from "./routes/AttachmentRoute";
 import { HealthRoute } from "./routes/HealthRoute";
 import { HomeRoute } from "./routes/HomeRoute";
 import { TricksRoute } from "./routes/TricksRoute";
@@ -44,6 +45,10 @@ const router = createBrowserRouter([
         children: [
           { index: true, element: <Welcome /> },
           { path: "note/*", element: <NoteRoute /> },
+          // Separate route from note/*: an attachment has no markdown body,
+          // no frontmatter and no backlinks, so it shares nothing with the
+          // note view except living in the same tree (roadmap #9).
+          { path: "file/*", element: <AttachmentRoute /> },
           {
             path: "graph",
             element: (

@@ -4,6 +4,7 @@ import { useNote, useNotes, useSaveNote } from "../api/queries";
 import { Markdown } from "../markdown/Markdown";
 import { BacklinksPanel } from "../components/BacklinksPanel";
 import { buildSlugIndex } from "../lib/slugIndex";
+import { decodeRoutePath } from "../lib/notePath";
 import { stripFrontmatter } from "../lib/frontmatter";
 import { DashboardRenderer, isDashboardFrontmatter } from "../dashboards/DashboardRenderer";
 import { useEditorStore } from "../editor/editorStore";
@@ -16,23 +17,11 @@ import { useUnsavedChangesGuard } from "../editor/useUnsavedChangesGuard";
 // view.
 const NoteEditor = lazy(() => import("../editor/NoteEditor").then((m) => ({ default: m.NoteEditor })));
 
-function decodePath(splat: string | undefined): string {
-  if (!splat) return "";
-  return splat
-    .split("/")
-    .map((seg) => {
-      try {
-        return decodeURIComponent(seg);
-      } catch {
-        return seg;
-      }
-    })
-    .join("/");
-}
-
 export function NoteRoute() {
   const params = useParams();
-  const path = decodePath(params["*"]);
+  // Shared with AttachmentRoute since roadmap #9 added a second splat route
+  // over the same vault paths — one decoder, not two that can drift.
+  const path = decodeRoutePath(params["*"]);
   const noteQuery = useNote(path || undefined);
   const notesQuery = useNotes();
   const slugIndex = useMemo(() => buildSlugIndex(notesQuery.data ?? []), [notesQuery.data]);
