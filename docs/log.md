@@ -709,3 +709,62 @@ syntax-hiding, conflict resolution/ETags, structured frontmatter form.
 **Known, not yet addressed:** main and NoteEditor JS chunks are both
 over Vite's 500kB warning threshold (560kB / 615kB). Builds and runs
 fine; further code-splitting not pursued this pass.
+
+## [2026-08-15] Tricks mechanism built: correr_script + trick renderer
+
+The first trick request that needed more than a note write — a button
+that regenerates a report — needed a new capability: a trick triggering
+server-side code, not just a file write. Designed the trust boundary
+(`panel/docs/tricks-spec.md`, "Running a script") before building
+against it:
+
+- Client selects **which** pre-declared `acciones[actionIndex]` to run —
+  never supplies `ruta`/`args`. The server re-reads `trick.yaml` off disk
+  itself for every run; nothing about *what* executes ever comes from
+  the request.
+- `execFile`, never a shell — arguments are a literal array, so there is
+  no shell parsing for a crafted argument to escape.
+- Script path must resolve under `.claude/tricks/` (any script there, not
+  scoped to one trick's own folder — the chosen trade-off).
+- Hard 5s timeout, `SIGKILL`, so a hung script can't hang the request.
+
+**Independently re-verified, not taken on the build report** — this is
+code execution, so the report's screenshots weren't treated as proof.
+Built a second, adversarial test trick myself (`probe`), separate from
+the agent's own test fixture, and attacked the live server directly:
+
+- Shell-injection-shaped args (`; echo pwned`, `$(whoami)`, backticks,
+  `&&`) arrived as literal strings — confirmed via raw HTTP response, not
+  the UI's rendering of it.
+- Relative traversal (`../../../../tmp/...`) and an absolute path
+  (`/bin/echo`) both rejected with 400, confirmed no side effect occurred
+  (checked for a marker file the traversal target would have created).
+- **The load-bearing test**: POSTed `actionIndex: 0` together with a
+  forged `ruta`/`args` in the body, aimed at overriding the real action.
+  The server ran the exact same script with the exact same original args
+  regardless — the forged fields were completely ignored. This is the
+  actual security property; everything else follows from it.
+- Timeout: a script sleeping 30s returned in 5s, `timedOut: true`,
+  request never hung.
+- Non-zero exit and stderr surfaced correctly, in the UI and the raw
+  response.
+
+**Found during verification, not disclosed in the build report:** a
+single stray null byte in `index.ts`, inside the `/api/graph` endpoint's
+edge-dedup key — `${note.path} ${resolved}` had its space replaced with
+`\x00`. This made git treat the whole file as binary (silent diffs) and
+made plain `grep` report false negatives against it, which is how a
+review pass nearly missed that the trick routes existed at all. TypeScript
+happily compiles a raw null byte inside a template literal, so the clean
+build gave no signal either — a reminder that "it builds" doesn't cover
+byte-level file integrity. Root byte restored; no other file in the
+change carried the same corruption (checked all of them).
+
+Frontend: real trick listing/detail routes, `lista` control reusing the
+existing dashboard `applyFilter` (not a second parallel implementation),
+`boton`+`correr_script` with loading/success/failure/timeout states,
+stdout/stderr shown, everything behind the existing per-widget error
+boundary. `texto`/`checkbox`/`fecha`/`select` render read-only this pass
+— no single-note binding context yet; `set`/`crear_nota`/`archivar`
+action verbs parse but don't execute yet. Both deferred deliberately, not
+silently dropped.
