@@ -71,8 +71,9 @@ function FolderView({
 
 /**
  * An attachment is not a note route: no title, no markdown, nothing the note
- * view can render (roadmap #9). It links to /vault/file/*, which previews it
- * if it's an image or a PDF and otherwise offers the download.
+ * view can render (roadmap #9). It links to /vault/file/*, which renders it
+ * with whichever viewer its type maps to (src/preview/) and falls back to a
+ * download when nothing can.
  *
  * Marked with its extension rather than an emoji icon — one glyph set that
  * covers every type the vault will ever hold, readable at 0.65rem, and it

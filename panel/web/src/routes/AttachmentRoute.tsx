@@ -1,32 +1,28 @@
 import { useParams } from "react-router-dom";
 import { useAttachments } from "../api/queries";
-import {
-  attachmentKind,
-  attachmentUrl,
-  baseName,
-  canPreviewInline,
-  extensionOf,
-  formatBytes,
-} from "../lib/attachments";
+import { attachmentDownloadUrl, baseName, extensionOf, formatBytes } from "../lib/attachments";
 import { decodeRoutePath } from "../lib/notePath";
+import { AttachmentPreview } from "../preview/AttachmentPreview";
 
 /**
- * The non-`.md` counterpart of NoteRoute (roadmap #9). Deliberately thin:
- * download always, inline preview only for images and PDFs.
+ * The non-`.md` counterpart of NoteRoute (roadmap #9). Previously this was
+ * `<img>`, `<embed>`, or a download link and nothing else; the preview layer
+ * under `src/preview/` replaced that, and the security reasoning it was
+ * built on moved with it — the short version is that the server, not this
+ * route, decides what may be served inline, and HTML and SVG are safe to
+ * render here only because of the `Content-Security-Policy: sandbox` header
+ * it sends with them (see preview/HtmlPreview.tsx and lib/preview.ts).
  *
- * Anything else is a download link and nothing more — no `<iframe>`/
- * `<object>` fallback for arbitrary types. The server decides what may be
- * served inline (uploaded HTML/SVG rendered on the panel's origin would be
- * stored XSS, and README rule 3 means there's no auth layer behind which
- * that would be survivable); working around it here would move that decision
- * to the client, which is exactly the wrong place for it.
+ * Layout is a column that fills the route's height rather than the
+ * `.note-route` two-column reading layout: an attachment has no backlinks
+ * panel and no 760px prose measure, and "the PDF is in a small box" was
+ * literally half the complaint.
  */
 export function AttachmentRoute() {
   const params = useParams();
   const path = decodeRoutePath(params["*"]);
   const { data: attachments, isLoading, isError, error } = useAttachments();
   const meta = attachments?.find((a) => a.path === path);
-  const href = attachmentUrl(path);
   const name = baseName(path);
   const ext = extensionOf(path);
 
@@ -35,70 +31,44 @@ export function AttachmentRoute() {
   }
 
   return (
-    <div className="note-route">
-      <article className="note-content">
-        <header className="note-header">
-          <div className="note-header-top">
-            <h1>{name}</h1>
-            <div className="note-editor-toolbar">
-              {/* `download` is a hint the browser honours for inline types
-                  (images, PDFs); for everything else the server's own
-                  Content-Disposition already forces a download. */}
-              <a className="attachment-download" href={href} download={name}>
-                Download
-              </a>
-            </div>
+    <div className="attachment-route">
+      <header className="note-header attachment-header">
+        <div className="note-header-top">
+          <h1>{name}</h1>
+          <div className="note-editor-toolbar">
+            <a className="attachment-download" href={attachmentDownloadUrl(path)}>
+              Download
+            </a>
           </div>
-          <div className="note-meta">
-            <span title={path}>{path}</span>
-            {meta && (
-              <>
-                <span> · </span>
-                <span>{formatBytes(meta.size)}</span>
-                <span> · </span>
-                <span>{new Date(meta.mtime).toLocaleString()}</span>
-              </>
-            )}
-          </div>
-          {isError && (
-            <p className="note-error">
-              Could not load the attachment index: {(error as Error).message}. The download link
-              above still works if the file is there.
-            </p>
+        </div>
+        <div className="note-meta">
+          <span title={path}>{path}</span>
+          {meta && (
+            <>
+              <span> · </span>
+              <span>{formatBytes(meta.size)}</span>
+              <span> · </span>
+              <span>{new Date(meta.mtime).toLocaleString()}</span>
+            </>
           )}
-          {!isLoading && !isError && !meta && (
-            <p className="muted">
-              Not in the vault's attachment index — it may have been moved or deleted.
-            </p>
-          )}
-        </header>
-        <AttachmentPreview path={path} href={href} name={name} ext={ext} />
-      </article>
+        </div>
+        {isError && (
+          <p className="note-error">
+            Could not load the attachment index: {(error as Error).message}. The preview below
+            still works if the file is there.
+          </p>
+        )}
+        {!isLoading && !isError && !meta && (
+          <p className="muted">
+            Not in the vault's attachment index — it may have been moved or deleted.
+          </p>
+        )}
+      </header>
+      {/* Remounted per path so a viewer's local state (zoom, source toggle,
+          a failed decode) never carries across to the next file. */}
+      <div className="attachment-body">
+        <AttachmentPreview key={path} path={path} name={name} ext={ext} size={meta?.size} />
+      </div>
     </div>
   );
-}
-
-function AttachmentPreview({
-  path,
-  href,
-  name,
-  ext,
-}: {
-  path: string;
-  href: string;
-  name: string;
-  ext: string;
-}) {
-  if (!canPreviewInline(path)) {
-    return (
-      <p className="muted attachment-no-preview">
-        No preview for {ext ? `.${ext}` : "this type of"} files — download it to open it in whatever
-        app owns it.
-      </p>
-    );
-  }
-  if (attachmentKind(path) === "pdf") {
-    return <embed className="attachment-pdf" src={href} type="application/pdf" title={name} />;
-  }
-  return <img className="attachment-image" src={href} alt={name} />;
 }
