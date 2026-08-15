@@ -1,6 +1,6 @@
 import { lazy, Suspense } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import { AppShell } from "./routes/AppShell";
 import { VaultShell } from "./routes/VaultShell";
 import { Welcome } from "./routes/Welcome";
@@ -24,30 +24,45 @@ const queryClient = new QueryClient({
   },
 });
 
+/**
+ * A data router (`createBrowserRouter`/`RouterProvider`), not the plain
+ * declarative `<BrowserRouter><Routes>`. The unsaved-changes navigation
+ * guard (editor/useUnsavedChangesGuard.ts) needs `useBlocker`, which is a
+ * no-op outside a data router — everything else about the route tree below
+ * is unchanged from the previous declarative version.
+ */
+const router = createBrowserRouter([
+  {
+    path: "/",
+    element: <AppShell />,
+    children: [
+      { index: true, element: <HomeRoute /> },
+      {
+        path: "vault",
+        element: <VaultShell />,
+        children: [
+          { index: true, element: <Welcome /> },
+          { path: "note/*", element: <NoteRoute /> },
+          {
+            path: "graph",
+            element: (
+              <Suspense fallback={<p className="muted">Loading graph…</p>}>
+                <GraphRoute />
+              </Suspense>
+            ),
+          },
+          { path: "health", element: <HealthRoute /> },
+        ],
+      },
+      { path: "tricks", element: <TricksRoute /> },
+    ],
+  },
+]);
+
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<AppShell />}>
-            <Route index element={<HomeRoute />} />
-            <Route path="vault" element={<VaultShell />}>
-              <Route index element={<Welcome />} />
-              <Route path="note/*" element={<NoteRoute />} />
-              <Route
-                path="graph"
-                element={
-                  <Suspense fallback={<p className="muted">Loading graph…</p>}>
-                    <GraphRoute />
-                  </Suspense>
-                }
-              />
-              <Route path="health" element={<HealthRoute />} />
-            </Route>
-            <Route path="tricks" element={<TricksRoute />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
+      <RouterProvider router={router} />
     </QueryClientProvider>
   );
 }
