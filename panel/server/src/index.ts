@@ -58,6 +58,55 @@ const cfg = loadConfig();
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? "info" } });
 
 /**
+ * Cross-site write guard. Found 2026-08-15 by testing a claim the tricks
+ * v2 design left labelled `assumed:`, and it was real.
+ *
+ * There is no auth (rule 3), so there is no session cookie to steal —
+ * which is exactly why this is easy to dismiss and wrong to. The attack
+ * needs no credentials: any page the vault's owner visits in any tab can
+ * `fetch("http://<tailnet-host>:8710/api/attachment", {method:"POST",
+ * body: formData, mode:"no-cors"})`. `multipart/form-data` is a
+ * **CORS-simple** request, so the browser sends it with no preflight to
+ * refuse. CORS then hides the *response* from the attacker — but the
+ * write already happened. Confirmed against this server: a POST bearing
+ * `Origin: https://evil.example` wrote `notes/payload.txt` into the
+ * vault and answered 200.
+ *
+ * `PUT /api/note` and the JSON trick-run endpoint are not reachable this
+ * way — PUT is never simple, and `application/json` forces a preflight —
+ * so the guard is about closing the shape, not just the one route.
+ *
+ * Both checks are browser-supplied and unforgeable *by page script*:
+ * `Origin` and `Sec-Fetch-*` are forbidden header names. A request with
+ * neither is not a browser (curl, a cron script, `scripts/`), and is
+ * allowed — this is a same-site guard, not authentication, and pretending
+ * otherwise would be the more dangerous mistake.
+ */
+const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+app.addHook("onRequest", async (req, reply) => {
+  if (!MUTATING.has(req.method)) return;
+
+  const site = req.headers["sec-fetch-site"];
+  if (typeof site === "string" && site !== "same-origin" && site !== "none") {
+    req.log.warn({ url: req.url, site }, "cross-site write refused");
+    return reply.code(403).send({ error: "cross-site request refused" });
+  }
+
+  const origin = req.headers.origin;
+  if (typeof origin === "string" && origin !== "null") {
+    // Compare against the address the client actually reached us on: the
+    // panel is opened by tailnet IP or MagicDNS name, never one fixed
+    // hostname, so an allowlist of origins cannot be written up front.
+    const expected = `${req.protocol}://${req.headers.host}`;
+    if (origin !== expected) {
+      req.log.warn({ url: req.url, origin, expected }, "cross-origin write refused");
+      return reply.code(403).send({ error: "cross-origin request refused" });
+    }
+  }
+});
+
+/**
  * `limits` here is the size limit, and it is enforced *by the parser as
  * it streams* — busboy stops feeding the file stream at `fileSize` and
  * raises FST_REQ_FILE_TOO_LARGE. Checking the size after the fact would
