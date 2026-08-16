@@ -1339,3 +1339,213 @@ re-checking per browser, since it fails closed and presents as "the trick
 doesn't render." Nothing was implemented — `panel/server/src/**` and
 `panel/web/src/**` are untouched; the spec's §13 lists the build order and
 which seams are parallel.
+
+## [2026-08-15] Tricks v2 server: app serving, the bridge, and the write-path audit
+
+Seams 1, 3 and 5 of `panel/docs/tricks-spec.md` §13, server side only.
+Two endpoints, taking the panel from twelve to fourteen:
+
+```
+GET  /api/tricks/:name/app/*    a trick's mini app, into an opaque origin
+POST /api/tricks/:name/bridge   the one funnel for a trick's capabilities
+```
+
+plus the v2 manifest schema, `tipo: "app" | "legacy"` on the listing, the
+panel's own CSP, and the cross-cutting refusal audit. `panel/web/**`
+untouched — the host (seam 2) is somebody else's.
+
+### What was built
+
+**Manifest (§4.1).** `app:` and `capacidades:` validated at read time, on
+every read, never cached. An unknown capability name invalidates the
+manifest rather than being ignored, because a silently-dropped
+`vault.wirte:` and a denied one are indistinguishable at runtime and the
+author debugging it has no way to tell. `carpeta` refuses `""`, `"."` and
+`"/"` — "the whole vault" is not a capability — and `vault.write.carpeta`
+refuses anything under `.claude/` except that trick's own `data/`.
+
+**Serving (§5.3).** Real files at a real hierarchical URL, with
+`Content-Security-Policy: sandbox allow-scripts; …; connect-src 'none'`,
+`Access-Control-Allow-Origin: *` (ES modules are always fetched in CORS
+mode and an opaque origin has nothing to match), `nosniff`, `no-store`,
+and a content type from an allowlist. Path resolution is `safeScriptPath`
+one level deeper, plus a `realpath` check the string checks cannot do.
+
+**Bridge (§6, §7).** One funnel. Scope enforced per capability from the
+server's own fresh read of `trick.yaml`; `script.run` delegates to
+`runTrickAction` **unchanged**, with one new gate in front of it — the
+index must also be listed in `script.run.acciones`, so "declare an action"
+and "expose it to browser code" are two separate decisions. `estado` is
+one JSON file in the trick's own `data/`.
+
+**Write-path audit (§13 seam 5).** The rule moved into one function,
+`writepath.ts:assertNetworkWritable`, called by all three write paths.
+`assertUploadAllowed` now delegates to it and keeps its own wording, so
+the upload endpoint's fix and the two new callers cannot drift.
+
+### The thing the audit actually found
+
+`PUT /api/note` could write `.claude/`. It only writes `.md`, which is
+why it was reasoned safe when the upload escalation was fixed — that
+attack needed a `trick.yaml`. Too narrow: a skill's `SKILL.md` is
+instructions the next Claude Code run in the vault reads and obeys, and a
+job note under `.claude/jobs/` is what a scheduled run consults. Markdown
+that something executes is executable configuration (§2.2), and a
+network client rewriting one is code execution with a delay fuse. It also
+accepted `.git/hooks/x.md` and `.obsidian/plugins/evil.md`, which the
+upload endpoint has refused since this morning.
+
+Refused now: `.claude/skills/demo/SKILL.md`, `.claude/tricks/x/SKILL.md`,
+`.claude/jobs/nightly.md`, `.git/hooks/x.md`, `.obsidian/plugins/evil.md`,
+`node_modules/x.md`, and the leading-slash spelling of each — 403, and
+the target file verified unchanged. The cost, accepted deliberately and
+stated in the spec: **the panel's editor can no longer save a file under
+`.claude/`.** Editing a skill is a filesystem author's job, done on the
+box.
+
+### Attacked before trusted, per the `correr_script` standard
+
+Real server, scratch vault, `curl`, plus Chrome 151 for the parts only a
+browser can answer. Everything below was run.
+
+**The gate.** No `Sec-Fetch-*` → 403. `dest=document` (top-level open) →
+403, in curl *and* in a real tab, which is the concrete hole from §10.6.
+`dest=iframe, site=cross-site` → 403. `dest=iframe, site=same-origin` →
+200. Subresources (`script`/`style`/`image`) at `site=cross-site` → 200,
+because gating those is the mistake the spec spends a paragraph on; it is
+now also a test whose name says so.
+
+**Path escape via the splat.** `..%2f..%2f..%2f..%2fnotas/secreto.md`,
+plain `../`, `../trick.yaml`, `../../hostil/app/h.js`,
+`sub/../../trick.yaml`, `//etc/passwd`, double-encoded `..%252f` — 400 or
+404, nothing outside `app/` served. Note find-my-way *does* percent-decode
+the wildcard, so `%2f` arrives as a real separator and the containment
+check is what catches it, not the absence of decoding. A symlink inside
+`app/` pointing outside the vault → 400 (`realpath`, the only check that
+can see it).
+
+**Capabilities.** Every op called on a trick that never declared it →
+`capability_denied`, including `estado` on a v1 trick. Every scope check
+attacked from outside its scope: `subcarpeta: "../../../../notas"`,
+`path: "../../../../notas/secreto.md"`, `"gastos/../../secreto.md"`,
+`"../trick.yaml"`, `"../app/index.html"`, `"evil.sh"`, `".hidden.md"`,
+`frontmatter.tipo` overriding a manifest-pinned value, `limite: 99999`,
+writing a field not in `campos`, replacing a body with `cuerpo: false` —
+all denied, and `notas/secreto.md` and `trick.yaml` verified byte-intact
+afterwards.
+
+**Can a caller influence *what* runs?** No, and this was the test the
+whole design is for. `script.run` with `{"indice":0, "ruta":
+".claude/tricks/hostil/nasty.sh", "args":["injected"]}` ran
+`resumen.sh uno` — the manifest's own values — and the side-effect file
+`nasty.sh` writes outside the vault was never created. Index 1 of the same
+manifest, which *does* name another trick's script, is `capability_denied`
+because it is not in `script.run.acciones`; §11's "any script under
+`.claude/tricks/`" still holds for `/run`, and the bridge is deliberately
+narrower.
+
+**Identity.** A `trick: "gastos"` field forged into the body of a `hostil`
+call was ignored — the route's `:name` is the identity, as the port is
+over `postMessage`. Prototype pollution: Fastify's JSON parser rejects
+`__proto__` outright; `constructor` and `prototype` reach the handler and
+are refused there.
+
+**The cross-site guard and the bridge agree, and here is why.** The
+question was what a sandboxed iframe sends for `Sec-Fetch-Site` on a
+fetch to its own document's origin. Measured, in Chrome, with a rig whose
+CSP permitted the fetch so it would actually reach the wire:
+
+```
+plain same-origin iframe      Origin: http://127.0.0.1:8795   site: same-origin
+sandboxed (opaque) iframe     Origin: null                    site: cross-site
+```
+
+So an opaque-origin frame's request is **cross-site**, and the guard
+refuses it. That is correct and intended, not something to work around:
+**the frame is not supposed to call the bridge — the host is.** The host
+is the panel's own page on the panel's real origin, so it sends
+`site: same-origin` and a matching `Origin`, and it passes. Confirmed
+both directions against the real server: same-origin + matching
+`Origin` → 200; `cross-site` (with or without `Origin: null`) → 403;
+`same-site` → 403; mismatched `Origin` with no `Sec-Fetch-Site` → 403.
+
+The guard was not weakened. The one gap it leaves — `Origin: null` with
+*no* `Sec-Fetch-Site` is allowed — is a client that is not a browser, or
+a browser old enough to predate `Sec-Fetch-*`, and for the frame case
+`connect-src 'none'` stops the request before it exists. Layered, not
+duplicated.
+
+**The frame, from inside, against the real server.** A hostile app mounted
+in `<iframe sandbox="allow-scripts">` on the panel's origin:
+`window.origin` is `"null"`; `frameElement` is `null`; `localStorage`,
+`document.cookie` and `parent.document` all `SecurityError`;
+`window.open` → `null`; `top.location.href = …` → `SecurityError`;
+`sendBeacon` returned `true` and sent nothing; `form.submit()` returned
+and sent nothing; every `fetch` — the bridge, `/api/note`, and even its
+own `h.js` — `TypeError: Failed to fetch`; sync XHR `NetworkError`. The
+server log confirms it: across the whole session, **zero** `/api/note` or
+`/api/tricks/*/bridge` requests originated in a frame. The frame's
+progress was traced with `<img>` beacons, which *do* arrive — `img-src
+'self'` permits them, and they are the residual: a frame can make GETs it
+cannot read.
+
+**A frame navigating itself into another trick's app**, in a real browser:
+the request reached the server as `dest=iframe, site=cross-site` and was
+403'd, logged as such. Exactly the spec's prediction.
+
+### Found next door, and fixed
+
+The attachment preview tier (`servePolicy`, added this morning) served
+HTML with `Content-Security-Policy: sandbox allow-scripts` and nothing
+else. An opaque origin stops a document reading *this* origin; it does
+nothing about the document reaching the network. Measured: an uploaded
+`report.html` served by `/api/attachment` ran
+`fetch("/api/note?path=notas/secreto.md")` and **the request arrived** —
+unreadable (no CORS header on data routes) and unable to write (the
+cross-site guard), but a live beacon channel to any host the viewer's
+browser can reach. Added `connect-src 'none'; form-action 'none'` to that
+tier and re-measured: `TypeError`, no request. Images and inline script
+are untouched, so reports still render. Outside this task's three seams
+and done anyway, because it is the same finding one module over: **an
+opaque origin bounds what a document can read, never what it can send.**
+
+### Six ambiguities the authoring agent hit, decided here
+
+Written into the spec as §6.8 so seam 2 inherits them: the title key is
+`title` (five call sites beat one example; §7.1's example corrected);
+`vault.write` params are `{path, frontmatter?, cuerpo?}` with no `crear`
+param, since `crear` is the author's standing decision and `created` in
+the result answers what happened; a `null` frontmatter value deletes that
+key; `estado.get` answers `{valor}`, `null` when unset; `vault.read`
+returns `content` plus, for `.md`, the parsed `cuerpo` and `frontmatter`;
+`sort` is `{field, order}`. Also settled: the HTTP transport carries the
+§6.4 envelope verbatim, the trick's identity is the URL, and the HTTP
+status mirrors the error code while the body always carries the envelope.
+
+### v1 still works, which matters because main is deployed
+
+The one real machine is running v1 tricks. Verified against a full v1
+manifest — `datos`, `ui.campos` with `texto`/`checkbox`/`fecha`/`select`,
+all four action verbs, `programacion`: it lists as `tipo: "legacy"`, the
+detail route keeps every v1 field, and `correr_script` still runs through
+`POST /api/tricks/:name/run`. Its bridge calls are `capability_denied`
+(no `capacidades`) and its app URL 404s with "this trick declares no app".
+A trick folder with no `trick.yaml` at all — the `_plantillas` case — is
+skipped with a log line and does not break the listing.
+
+### Left undone
+
+- **`trabajo.estado` answers `unsupported_op`.** It is seam 6 and it must
+  share the jobs-view parser rather than grow a second one.
+- **`datos.cambiaron` polling and the `tema` event** are seam 6 too;
+  nothing here pushes.
+- **Only Chrome 151/macOS**, same gap the spec already records. The
+  `Sec-Fetch-*` gate fails closed, so on an untested browser the symptom
+  is "the trick doesn't render."
+- **The YAML date reformatting** noted in the spec's §14 is real and
+  unfixed; it wants one fix shared with dashboard row actions, not a
+  second YAML path here.
+- **No conflict detection on writes**, carried forward from v1 (§7.3).
+- **The panel CSP has no script `'unsafe-inline'`.** Vite's default build
+  is fine; a future inline bootstrap needs a nonce. Flagged in §5.4
+  because it will present as a blank panel, not as an error.

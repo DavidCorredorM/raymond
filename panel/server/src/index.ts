@@ -1,5 +1,5 @@
 /**
- * The panel's whole HTTP surface. Twelve endpoints:
+ * The panel's whole HTTP surface. Fourteen endpoints:
  *
  *   GET  /api/health              is it up, and what is it indexing
  *   GET  /api/notes               every note, no bodies — the sidebar
@@ -13,14 +13,18 @@
  *   GET  /api/tricks              every valid trick manifest, summarized
  *   GET  /api/tricks/:name        one trick's full manifest
  *   POST /api/tricks/:name/run    run one pre-declared action (code execution)
+ *   GET  /api/tricks/:name/app/*  a trick's mini app, into an opaque origin
+ *   POST /api/tricks/:name/bridge the one funnel for a trick's capabilities
  *
  * No endpoint here does anything a human couldn't do by editing a file
  * directly — the API is a faster path to the same filesystem, not a
- * separate capability (README, "The vision"). The two exceptions to
- * "boring" are `POST /api/tricks/:name/run` (runs code) and
- * `POST /api/attachment` (puts a file on the disk); both have a written
- * trust boundary — `tricks.ts` and `attachments.ts` respectively —
- * because there is no authentication in front of any of this.
+ * separate capability (README, "The vision"). The exceptions to "boring"
+ * are `POST /api/tricks/:name/run` and `POST /api/tricks/:name/bridge`
+ * (both run code), `POST /api/attachment` (puts a file on the disk) and
+ * `GET /api/tricks/:name/app/*` (hands a browser code and tells it to
+ * run); each has a written trust boundary — `tricks.ts`, `bridge.ts`,
+ * `attachments.ts` and `writepath.ts` — because there is no
+ * authentication in front of any of this.
  */
 import Fastify from "fastify";
 import fastifyStatic from "@fastify/static";
@@ -45,7 +49,21 @@ import {
   resolveInVault,
   type VaultIndex,
 } from "./vault.js";
-import { listTricks, readTrickManifest, runTrickAction, TrickError } from "./tricks.js";
+import {
+  APP_CSP,
+  PANEL_CSP,
+  appContentType,
+  appRequestGate,
+  appRoot,
+  assertAppRealPath,
+  listTricks,
+  readTrickManifest,
+  resolveAppFile,
+  runTrickAction,
+  TrickError,
+} from "./tricks.js";
+import { handleBridge } from "./bridge.js";
+import { assertNetworkWritable, WritePathError } from "./writepath.js";
 import {
   AttachmentError,
   assertNotSymlink,
@@ -226,9 +244,41 @@ app.get<{ Querystring: { path?: string } }>("/api/note", async (req, reply) => {
   };
 });
 
+/**
+ * The one note write path — and, since the seam-5 audit
+ * (tricks-spec.md §13), one of three places that must ask
+ * `assertNetworkWritable` before touching the disk.
+ *
+ * It used to be reasonable to skip that here: this route only writes
+ * `.md`, and the escalation found in the upload endpoint needed a
+ * `trick.yaml`. That reasoning was too narrow. A skill's `SKILL.md` under
+ * `.claude/skills/` is instructions the next Claude Code run in the vault
+ * reads and obeys, and a job note under `.claude/jobs/` is the registry a
+ * scheduled run consults —
+ * markdown that is executed by something, which is the definition of
+ * executable configuration in §2.2. Rewriting one over HTTP, with no
+ * authentication in front of it, is a code-execution path with a delay
+ * fuse on it. Refused now, by the same shared rule the upload endpoint
+ * uses, so the two cannot drift.
+ *
+ * This does mean the panel's editor cannot save a file under `.claude/`.
+ * That is the intended trade and it is the spec's explicit instruction
+ * ("no network-reachable endpoint may create or modify any file under
+ * `.claude/`", §11 constraint 4): editing a skill is a filesystem
+ * author's job, done on the box.
+ */
 app.put<{ Body: { path?: string; content?: string } }>(
   "/api/note",
   async (req, reply) => {
+    // A mutating endpoint states its content type rather than inheriting
+    // whatever a parser happens to accept (spec §10.3). `application/json`
+    // is not a CORS-simple content type, so this is also the check that
+    // forces a preflight a cross-origin page cannot satisfy — the second
+    // lock behind the cross-site guard above, not a duplicate of it.
+    const ct = String(req.headers["content-type"] ?? "");
+    if (!ct.toLowerCase().startsWith("application/json")) {
+      return reply.code(415).send({ error: "application/json required" });
+    }
     const { path, content } = req.body ?? {};
     if (!path || typeof content !== "string") {
       return reply.code(400).send({ error: "path and content required" });
@@ -241,6 +291,15 @@ app.put<{ Body: { path?: string; content?: string } }>(
     }
     if (!rel.endsWith(".md")) {
       return reply.code(400).send({ error: "only .md files" });
+    }
+    try {
+      assertNetworkWritable(rel, cfg.ignore);
+    } catch (err) {
+      if (err instanceof WritePathError) {
+        app.log.warn({ path: rel, reason: err.message }, "note write refused");
+        return reply.code(403).send({ error: err.message });
+      }
+      throw err;
     }
     await writeNote(cfg.vaultDir, rel, content);
     await refresh(join(cfg.vaultDir, rel));
@@ -612,6 +671,153 @@ app.post<{ Params: { name: string }; Body: { actionIndex?: number } }>(
 );
 
 /**
+ * A trick's mini app, served into an **opaque origin** (tricks-spec.md
+ * §5). This is the endpoint the whole v2 design turns on, so the two
+ * mechanisms doing the work are stated here as well as in `tricks.ts`:
+ *
+ * 1. `Content-Security-Policy: sandbox allow-scripts` on the *response*,
+ *    which drops the document into a unique opaque origin wherever it is
+ *    loaded — not only inside an iframe the frontend remembered to
+ *    sandbox. The panel additionally uses `<iframe sandbox="allow-scripts">`,
+ *    which forces the same thing from the other side. Either alone is
+ *    sufficient; both are set because forgetting both is silent and
+ *    catastrophic.
+ * 2. The `Sec-Fetch-*` gate (`appRequestGate`), which decides *who* may
+ *    load the entry document at all. Read the comment on that function
+ *    before changing anything here — the obvious wrong version of the
+ *    rule 403s every asset the app loads and presents as "my scripts are
+ *    fetched but never execute."
+ *
+ * `Access-Control-Allow-Origin: *` is on app files and **never** on the
+ * data routes. ES module scripts are always fetched in CORS mode and the
+ * frame's origin is opaque, so without it `<script type="module">` does
+ * not load at all (§10.2). It reopens nothing: `connect-src 'none'` means
+ * the frame cannot do anything with a fetch, and the residual — anything
+ * that can reach the tailnet address can read a trick's app source — is
+ * already true of every other endpoint here.
+ */
+app.get<{ Params: { name: string; "*": string } }>(
+  "/api/tricks/:name/app/*",
+  async (req, reply) => {
+    const gate = appRequestGate(
+      req.headers["sec-fetch-dest"],
+      req.headers["sec-fetch-site"],
+    );
+    if (!gate.ok) {
+      req.log.warn(
+        {
+          trick: req.params.name,
+          url: req.url,
+          dest: req.headers["sec-fetch-dest"] ?? null,
+          site: req.headers["sec-fetch-site"] ?? null,
+        },
+        "trick app request refused by the Sec-Fetch gate",
+      );
+      return reply.code(gate.status).send({ error: gate.error });
+    }
+
+    let manifest;
+    try {
+      manifest = await readTrickManifest(cfg.vaultDir, req.params.name);
+    } catch (err) {
+      const status = err instanceof TrickError ? (err.statusCode === 404 ? 404 : 404) : 500;
+      return reply.code(status).send({ error: "no such trick app" });
+    }
+    if (!manifest.app) {
+      return reply.code(404).send({ error: "this trick declares no app" });
+    }
+
+    let file: { full: string; rel: string };
+    try {
+      file = resolveAppFile(
+        cfg.vaultDir,
+        req.params.name,
+        req.params["*"] ?? "",
+        manifest.app.entrada,
+      );
+      await assertAppRealPath(appRoot(cfg.vaultDir, req.params.name), file.full);
+    } catch (err) {
+      if (err instanceof TrickError) {
+        if (err.statusCode >= 500) throw err;
+        return reply.code(err.statusCode).send({ error: err.message });
+      }
+      throw err;
+    }
+
+    const size = (await stat(file.full)).size;
+    return reply
+      .header("Content-Type", appContentType(file.rel))
+      .header("X-Content-Type-Options", "nosniff")
+      // App files change the moment an author saves one, and a stale
+      // cached `index.html` inside an opaque origin is not something a
+      // user can clear from the panel's UI.
+      .header("Cache-Control", "no-store")
+      .header("Access-Control-Allow-Origin", "*")
+      .header("Content-Security-Policy", APP_CSP)
+      .header("Content-Length", String(size))
+      .send(createReadStream(file.full));
+  },
+);
+
+/**
+ * `/app` without the trailing slash. Relative URLs inside the app would
+ * resolve one level too high, so this never serves the document — it
+ * sends the browser to the real app root and lets that request go
+ * through the gate normally.
+ */
+app.get<{ Params: { name: string } }>("/api/tricks/:name/app", async (req, reply) =>
+  reply.redirect(`/api/tricks/${encodeURIComponent(req.params.name)}/app/`, 308),
+);
+
+/**
+ * The bridge (tricks-spec.md §6, §7): the single funnel through which a
+ * mounted trick reaches the vault. All the reasoning is in `bridge.ts`;
+ * the two things worth seeing from the route table are:
+ *
+ * - **The trick's identity is this URL's `:name`, never a field in the
+ *   body.** The panel's host code puts it there, bound to the frame it
+ *   mounted. A body field would be forgeable by the frame; a port and a
+ *   route are not (§6.3).
+ * - **`application/json` is required explicitly.** A cross-origin page
+ *   can always send a CORS-simple POST (`text/plain`,
+ *   `application/x-www-form-urlencoded`, `multipart/form-data`) with no
+ *   preflight to refuse; requiring JSON means any cross-origin attempt
+ *   must first pass a preflight that this server does not answer. That is
+ *   independent of — and behind — the cross-site guard at the top of this
+ *   file, and independent again of the frame's own `connect-src 'none'`,
+ *   which stops it ever reaching the network. Three fences, because the
+ *   thing on the other side of them is "write the vault, run a script."
+ */
+app.post<{ Params: { name: string } }>(
+  "/api/tricks/:name/bridge",
+  // §6.6's per-message ceiling, enforced by the parser rather than after
+  // the body is in memory.
+  { bodyLimit: 256 * 1024 },
+  async (req, reply) => {
+    const ct = String(req.headers["content-type"] ?? "");
+    if (!ct.toLowerCase().startsWith("application/json")) {
+      return reply.code(415).send({
+        v: 1,
+        ok: false,
+        error: { code: "bad_request", message: "application/json required" },
+      });
+    }
+    const result = await handleBridge(
+      {
+        vaultDir: cfg.vaultDir,
+        ignore: cfg.ignore,
+        getIndex: () => index,
+        refresh: (full) => refresh(full),
+        log: (fields, msg) => app.log.info(fields, msg),
+      },
+      req.params.name,
+      req.body,
+    );
+    return reply.code(result.status).send(result.body);
+  },
+);
+
+/**
  * Serve the built frontend from the same process and port as the API —
  * the intended production topology, per the `@fastify/static` dependency
  * that sat unused since the backend was first built (plan §1). One
@@ -625,7 +831,35 @@ app.post<{ Params: { name: string }; Body: { actionIndex?: number } }>(
  */
 const webDist = resolve(dirname(fileURLToPath(import.meta.url)), "../../web/dist");
 if (existsSync(webDist)) {
-  await app.register(fastifyStatic, { root: webDist });
+  await app.register(fastifyStatic, {
+    root: webDist,
+    /**
+     * The panel's own CSP (tricks-spec.md §5.4), on the document only —
+     * a policy on a `.js` or `.css` response governs nothing.
+     *
+     * `frame-src 'self'` is the security control in it, not hygiene. A
+     * sandboxed frame may navigate *itself* (`allow-top-navigation`
+     * governs only the top window), and `frame-src` on the embedding
+     * page decides what URL the nested document may become, whoever
+     * initiated the navigation. It is what guarantees a trick frame can
+     * never turn into a foreign origin — which is in turn what makes it
+     * safe for the host to hand the bridge port over with
+     * `targetOrigin: "*"`, the only value an opaque origin accepts (§6.2).
+     *
+     * Note for whoever changes the frontend build: this policy has no
+     * `'unsafe-inline'` for scripts, so an inline `<script>` in
+     * `index.html` will be blocked. That is deliberate — the panel's
+     * origin is the one that can rewrite every note and fire
+     * `correr_script` — but it is a real constraint on the build, not a
+     * detail. Add a nonce; do not add `'unsafe-inline'`.
+     */
+    setHeaders: (res, path) => {
+      if (path.endsWith(".html")) {
+        res.setHeader("Content-Security-Policy", PANEL_CSP);
+        res.setHeader("X-Content-Type-Options", "nosniff");
+      }
+    },
+  });
 
   // SPA fallback: any GET that isn't /api/* and doesn't match a real
   // static file (JS/CSS/etc.) is a client-side route (e.g. /vault/graph,
