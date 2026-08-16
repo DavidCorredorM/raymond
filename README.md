@@ -136,13 +136,20 @@ Tailscale. Three destinations:
   client selects an index, never a path or an argument. Design and the
   measurements behind it: `panel/docs/tricks-spec.md`.
 
-Twelve API endpoints total, all documented at the top of
+Fourteen API endpoints total, all documented at the top of
 `panel/server/src/index.ts`: notes (list/read/write), attachments
 (list/download/upload), the link graph, vault health, and tricks
-(list/read/run). No endpoint exists that a
-human couldn't also achieve by editing a file directly — the API is a
-faster path to the same filesystem operations, not a separate
-capability.
+(list/read/run, plus serving a trick's app and the one bridge funnel its
+capabilities go through). No endpoint exists that a human couldn't also
+achieve by editing a file directly — the API is a faster path to the
+same filesystem operations, not a separate capability.
+
+Four of them are not boring, and each has a written trust boundary next
+to the code rather than in a doc nobody opens: `POST /api/tricks/:name/run`
+and `POST /api/tricks/:name/bridge` run code, `POST /api/attachment` puts
+a file on the disk, and `GET /api/tricks/:name/app/*` hands a browser
+code and tells it to execute. All four exist behind no authentication at
+all, which is the reason they are written the way they are.
 
 ---
 
