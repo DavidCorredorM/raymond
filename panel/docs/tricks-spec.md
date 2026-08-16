@@ -1467,12 +1467,33 @@ renegotiated locally.
   `relInside` still refuses anything that climbs out — but it is a
   correctness bug that silently breaks the write path of two of the four
   shipped starters, and under `crear: true` it silently creates garbage
-  instead of failing. Fixing it belongs in one place, not three: either
-  the server accepts a path that already starts with `carpeta`, or the
-  ops' result shape returns a `carpeta`-relative path. The host must
-  **not** patch it — §6.8 says the host relays the envelope rather than
-  translating it, and a path rewriter in the courier is exactly the kind
-  of second opinion that makes a scope check unverifiable.
+  instead of failing.
+
+  **Fixed 2026-08-15, in the server, one place.** Every path parameter is
+  now **vault-relative**, the same as `/api/note` and `/api/attachment` —
+  one rule for the whole app — and `carpeta` is enforced purely as a
+  containment test rather than as a silent prefix. This was the direction
+  that required no starter to change: all three apps that pass a path
+  (`lista`, `formulario`, `vault-steward`) were already building
+  vault-relative ones, either straight out of a query result or as
+  `CARPETA + "/" + name`. The server was the odd one out.
+
+  The one exception, deliberately: **`subcarpeta` stays folder-relative**,
+  because that is what its name says — a subfolder of `carpeta`, not a
+  place in the vault. It is joined explicitly at its call site rather than
+  inside the shared helper.
+
+  Re-measured on a real server after the change: a `vault.query` result
+  path fed straight into `vault.write` updates the note (`estado: hecho`
+  on disk); `formulario`'s `crear: true` writes exactly
+  `.claude/tricks/formulario/data/nueva.md` with no doubling; and
+  `secreto.md`, `.claude/tricks/lista/data/x.md` from `formulario`,
+  `../outside.md`, `/etc/passwd` and
+  `.claude/tricks/formulario/data/../../../../secreto.md` are all still
+  `capability_denied`, with `secreto.md` byte-intact. The host was not
+  touched — §6.8 keeps it a courier, and a path rewriter in the courier is
+  exactly the kind of second opinion that makes a scope check
+  unverifiable.
 - **The freshness event is verified, its pause is verified, and the two
   were verified separately.** Chrome driven by automation reports
   `document.visibilityState === "hidden"` for the tab, which is precisely

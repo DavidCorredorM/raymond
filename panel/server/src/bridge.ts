@@ -281,8 +281,13 @@ function opQuery(
     if (typeof params.subcarpeta !== "string") {
       throw new BridgeError("bad_request", "subcarpeta must be a string");
     }
-    const sub = relInside(cap.carpeta, params.subcarpeta, "subcarpeta");
-    folder = sub;
+    // `subcarpeta` is the one path parameter that stays *folder*-relative,
+    // because that is what the name says: a subfolder of `carpeta`, not a
+    // place in the vault. Joined explicitly here rather than inside
+    // `relInside`, which takes vault-relative paths like every other path
+    // parameter — the previous silent prefixing of both is what produced
+    // the doubled paths this comment's twin in `relInside` describes.
+    folder = relInside(cap.carpeta, `${cap.carpeta}/${params.subcarpeta}`, "subcarpeta");
   }
 
   // The manifest's frontmatter constraint is ALWAYS applied and the
@@ -488,7 +493,7 @@ function sameValue(a: unknown, b: unknown): boolean {
 // ---------------------------------------------------------------------------
 // vault.read (§7.2)
 //
-// Params:  { path }            relative to the capability's `carpeta`
+// Params:  { path }            vault-relative, must resolve inside `carpeta`
 // Result:  { path, content }                                for any file
 //          { path, content, cuerpo, frontmatter }           for .md
 //
@@ -800,11 +805,26 @@ async function opScriptRun(
 // ---------------------------------------------------------------------------
 
 /**
- * Resolve a client-supplied path against a capability's `carpeta` and
- * require the answer to stay inside it.
+ * Normalise a client-supplied **vault-relative** path and require it to
+ * land inside the capability's `carpeta`.
+ *
+ * Paths here are vault-relative, the same as `/api/note` and
+ * `/api/attachment` — one rule for the whole app. They used to be
+ * *`carpeta`-relative*, which read as a tidy scoping idea and was a bug:
+ * `vault.query` and `vault.read` **return** vault-relative paths, so the
+ * obvious thing an app does — take a path out of a query and write to it
+ * — re-joined the folder onto itself. Measured 2026-08-15: `formulario`
+ * with `crear: true` produced
+ * `.claude/tricks/formulario/data/.claude/tricks/formulario/data/nueva.md`,
+ * and both `lista` and `vault-steward` silently failed their write-back
+ * the same way. Never a scope escape — the containment test below always
+ * held — but two of four shipped starters were broken by it.
+ *
+ * `carpeta` remains exactly as strong a boundary: the path is still
+ * required to be under it, it is just no longer secretly prefixed first.
  *
  * `safeRelPath` first (the string rule every write path here uses), then
- * the `..`-collapsing join, then the containment test — because
+ * the `..`-collapsing normalise, then the containment test — because
  * `notas/gastos/../secreto.md` is inside the folder as a string and
  * outside it as a path (§10.8).
  */
@@ -816,7 +836,7 @@ function relInside(carpeta: string, input: string, what: string, file = false): 
     throw new BridgeError("capability_denied", `${what} is outside this trick's scope`);
   }
   const segments: string[] = [];
-  for (const seg of `${carpeta}/${cleaned}`.split("/")) {
+  for (const seg of cleaned.split("/")) {
     if (!seg || seg === ".") continue;
     if (seg === "..") {
       segments.pop();
