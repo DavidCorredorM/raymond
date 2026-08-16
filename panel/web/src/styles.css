@@ -1,25 +1,158 @@
+/* =====================================================================
+   The palette — "Rain Man", 1988 desert Americana.
+   =====================================================================
+
+   The app is named for Rain Man's Raymond (README), and the owner asked
+   for matte, muted colours from that world: dusty blue, warm sand and
+   clay, muted olive, cream, worn chrome. Every value below is either a
+   published Southwest/desert palette colour, cited by name, or one of
+   those anchors moved along a single axis (lightness) to clear a
+   contrast threshold — never a hue invented here.
+
+   Provenance, checked rather than remembered: there is no published
+   frame-by-frame colour analysis of the film itself (searched; the
+   cinema-palette sites that cover ~250 films do not include it), so the
+   anchors come from Big Ox Printing's Southwest palettes —
+   https://www.bigoxprinting.com/blogs/color-guides/southwest-color-palette-ideas
+   — specifically "Red Rock Canyon", "Cactus & Sage", "Turquoise & Clay",
+   "Sunbaked Adobe" and "Mesa Dusk". Named anchors used:
+
+     Warm Ivory      #FAF4E8   Cactus & Sage       page background, light
+     Off-White       #F1E9DA   Red Rock Canyon     raised surfaces, light
+     Soft Grey       #D9D5C9   Cactus & Sage       borders, light
+     Charcoal Brown  #5C3B26   Turquoise & Clay    the ink hue
+     Midnight Blue   #2F4858   Red Rock Canyon     the accent, light
+     Faded Denim     #688E93   Sunbaked Adobe      the accent hue, dark
+     Muted Olive     #7D805F   Cactus & Sage       "fine", "done"
+     Sage Green      #A7B79F   Cactus & Sage       "fine", dark
+     Adobe Clay      #C17C74   Cactus & Sage       "broken", dark
+     Deep Clay       #A05E50   Mesa Dusk           "broken", light
+     Deep Rust       #9D5C34   Red Rock Canyon     "careful"
+     Golden Brown    #C89F67   Mesa Dusk           "careful", dark
+     Dusty Plum      #7C5B6C   Mesa Dusk           one file-kind badge
+     Deep Teal       #3A6B6C   Sky & Sand          one file-kind badge
+
+   **Every foreground/background pair below is asserted at WCAG AA in
+   `src/lib/contrast.test.ts`, which parses this file.** That test is not
+   ceremony: muted is precisely the direction that fails contrast, so a
+   palette described as "calm" needs the check wired to the build or it
+   drifts one comfortable step at a time. Body text clears 4.5:1 on every
+   surface it can land on; the lowest pair in the whole set is 4.82:1
+   (the olive file badge on the deepest light surface), and Muted Olive
+   as published is 4.22:1 there — which is how it got darkened, and the
+   reason for having the check rather than a good eye.
+
+   One rule for anyone adding a colour: add a token here, cite where the
+   hue came from, and add the pair to that test. A literal hex anywhere
+   else in this file is a colour that no theme switch and no contrast
+   check will ever reach — that is what the previous palette did with the
+   file-type badges, and they stayed bright primary colours through two
+   redesigns because nothing pointed at them.
+
+   Exactly two literals survive below, both deliberately *not* ours:
+   `#ffffff` behind an HTML report's iframe (an author's page that sets no
+   background must not show our dark theme through it) and `#000` behind
+   a video (letterboxing). Neither is a surface anything of ours draws on.
+   --------------------------------------------------------------------- */
+
 :root {
-  --bg: #ffffff;
-  --bg-sidebar: #f6f6f7;
-  --fg: #1a1a1a;
-  --fg-muted: #6b6b6b;
-  --border: #e2e2e2;
-  --accent: #3b5bdb;
-  --broken: #c0392b;
-  --code-bg: #f0f0f2;
   color-scheme: light dark;
+
+  /* Surfaces, lightest to deepest. */
+  --bg: #faf4e8;
+  --bg-raised: #f1e9da;
+  --bg-sunken: #e7ddc9;
+  --border: #dcd0b8;
+  --border-strong: #c6b696;
+
+  /* Ink. `--fg` is Charcoal Brown taken most of the way to black so body
+     text clears AA on all three surfaces; `--fg-muted` is the same hue,
+     stopped where it still clears 4.5:1 on the *deepest* surface. */
+  --fg: #26221c;
+  --fg-muted: #645b4f;
+
+  --accent: #2f4858;
+  --accent-hover: #3e5f72;
+  /* What text on an accent fill must be. Never `white` — the cream is
+     part of the palette and pure white next to it reads as a bug. */
+  --accent-contrast: #faf4e8;
+  /* A wash of the accent, for a selected row that must not shout. */
+  --accent-wash: #dfe6ea;
+
+  --broken: #8c4034;
+  --warning: #7e4a2a;
+  --ok: #4f5a3e;
+
+  /* Focus. Its own token, not `--accent`: a focus ring is the one thing
+     that must stay visible if the accent is ever softened, and it is
+     checked at 3:1 against every surface. */
+  --focus: #2f4858;
+
+  --code-bg: #e7ddc9;
+
+  /* File-kind badges (NoteTree). Tokens, so the dark theme can restate
+     them and the contrast test can see them. */
+  --kind-image: #576242;
+  --kind-pdf: #8c4034;
+  --kind-sheet: #3c5c6b;
+  --kind-doc: #6a4f5e;
+  --kind-web: #7e4a2a;
+  --kind-media: #33605f;
+
+  /* Transparency backdrop for image previews. */
+  --checker-a: #faf4e8;
+  --checker-b: #e7ddc9;
+
+  /* Type. One scale, so nothing picks a size by feel. The body size is
+     deliberately larger than the 14px this app started at: the reader is
+     one person reading her own notes, often on an iPad, not a developer
+     scanning a dense tool. */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --text-xs: 0.75rem;
+  --text-sm: 0.85rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --radius: 8px;
+  --radius-sm: 5px;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #16171a;
-    --bg-sidebar: #1c1d21;
-    --fg: #e8e8ea;
-    --fg-muted: #9a9aa2;
-    --border: #2c2d31;
-    --accent: #7c93ff;
-    --broken: #ff6b5e;
-    --code-bg: #202126;
+    /* Night, not a colour-inverted day: warm-neutral surfaces (worn
+       chrome and asphalt) with the same desert hues sitting on them,
+       lightened until each clears AA against them. */
+    --bg: #191b1d;
+    --bg-raised: #212528;
+    --bg-sunken: #131517;
+    --border: #343a3e;
+    --border-strong: #4a5257;
+
+    --fg: #eae3d5;
+    --fg-muted: #a79d8d;
+
+    --accent: #9dbecf;
+    --accent-hover: #b6d0de;
+    --accent-contrast: #14181a;
+    --accent-wash: #2a3339;
+
+    --broken: #e09a83;
+    --warning: #d2ab74;
+    --ok: #aebfa5;
+
+    --focus: #9dbecf;
+
+    --code-bg: #131517;
+
+    --kind-image: #aebfa5;
+    --kind-pdf: #e09a83;
+    --kind-sheet: #9dbecf;
+    --kind-doc: #c6a5b4;
+    --kind-web: #d2ab74;
+    --kind-media: #8fbebc;
+
+    --checker-a: #212528;
+    --checker-b: #131517;
   }
 }
 
@@ -27,15 +160,55 @@
   box-sizing: border-box;
 }
 
+html {
+  /* An iPad in landscape gets the same reading size as a laptop; the
+     panel is used from both. */
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: 1.55;
   background: var(--bg);
   color: var(--fg);
 }
 
 a {
   color: var(--accent);
+}
+
+/**
+ * One focus ring for the whole app, on `:focus-visible` only so a mouse
+ * click doesn't leave a ring behind. Keyboard is the only way into the
+ * trick frames (synthetic pointer events don't reach an opaque-origin
+ * sandbox — docs/log.md, 2026-08-15), so "can you see where the focus
+ * is" is not a nicety here.
+ */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/**
+ * Touch targets. The panel is used from an iPad, where the sidebar rows,
+ * folder carets and toolbar buttons were all built at mouse sizes.
+ * 40px is below Apple's 44pt guidance but is what fits a 27-folder tree
+ * on one screen; the padding grows, the type does not.
+ */
+@media (pointer: coarse) {
+  :where(button, .note-tree-item, .note-tree-folder, .app-nav-link, .vault-subnav-link) {
+    min-height: 40px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 .muted {
@@ -58,7 +231,7 @@ a {
   gap: 28px;
   flex-shrink: 0;
   padding: 10px 20px;
-  background: var(--bg-sidebar);
+  background: var(--bg-raised);
   border-bottom: 1px solid var(--border);
 }
 
@@ -88,7 +261,7 @@ a {
 
 .app-nav-link.active {
   background: var(--accent);
-  color: white;
+  color: var(--accent-contrast);
 }
 
 .app-body {
@@ -104,7 +277,7 @@ a {
 .sidebar {
   width: 300px;
   flex-shrink: 0;
-  background: var(--bg-sidebar);
+  background: var(--bg-raised);
   border-right: 1px solid var(--border);
   padding: 12px;
   overflow-y: auto;
@@ -132,7 +305,7 @@ a {
 
 .vault-subnav-link.active {
   background: var(--accent);
-  color: white;
+  color: var(--accent-contrast);
   border-color: var(--accent);
 }
 
@@ -215,7 +388,7 @@ a {
 
 .note-tree-item.active {
   background: var(--accent);
-  color: white;
+  color: var(--accent-contrast);
 }
 
 .content {
@@ -307,7 +480,7 @@ a {
 
 .save-button:not(:disabled) {
   background: var(--accent);
-  color: white;
+  color: var(--accent-contrast);
   border-color: var(--accent);
 }
 
@@ -557,7 +730,7 @@ a {
 }
 
 .trick-card:hover {
-  background: var(--bg-sidebar);
+  background: var(--bg-raised);
   border-color: var(--accent);
 }
 
@@ -677,7 +850,7 @@ a {
   font: inherit;
   padding: 2px 8px;
   color: var(--fg);
-  background: var(--bg-sidebar);
+  background: var(--bg-raised);
   border: 1px solid var(--border);
   border-radius: 4px;
   cursor: pointer;
@@ -719,24 +892,24 @@ a {
 }
 
 .note-tree-ext[data-kind="image"] {
-  color: #2f9e44;
+  color: var(--kind-image);
 }
 
 .note-tree-ext[data-kind="pdf"] {
-  color: var(--broken);
+  color: var(--kind-pdf);
 }
 
 .note-tree-ext[data-kind="sheet"] {
-  color: #1971c2;
+  color: var(--kind-sheet);
 }
 
 .note-tree-ext[data-kind="doc"] {
-  color: #7048e8;
+  color: var(--kind-doc);
 }
 
 .note-tree-item.active .note-tree-ext {
   color: inherit;
-  background: rgba(255, 255, 255, 0.25);
+  background: color-mix(in srgb, var(--accent-contrast) 25%, transparent);
 }
 
 .attachment-index-error {
@@ -750,7 +923,7 @@ a {
   padding: 4px 12px;
   color: var(--fg);
   text-decoration: none;
-  background: var(--bg-sidebar);
+  background: var(--bg-raised);
   border: 1px solid var(--border);
   border-radius: 6px;
 }
@@ -821,7 +994,7 @@ a {
   gap: 12px;
   flex-shrink: 0;
   padding: 6px 8px 6px 12px;
-  background: var(--bg-sidebar);
+  background: var(--bg-raised);
   border-bottom: 1px solid var(--border);
 }
 
@@ -861,13 +1034,13 @@ a {
 .preview-button[aria-pressed="true"] {
   background: var(--accent);
   border-color: var(--accent);
-  color: white;
+  color: var(--accent-contrast);
 }
 
 .preview-button-primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: white;
+  color: var(--accent-contrast);
 }
 
 .preview-stage {
@@ -890,19 +1063,10 @@ a {
    flat backdrop hides a white logo as effectively as a white one does. The
    two greys are picked to sit either side of both palettes' background. */
 .preview-stage[data-backdrop="checker"] {
-  --checker-a: #ffffff;
-  --checker-b: #e6e6e9;
   background-color: var(--checker-a);
   background-image:
     conic-gradient(var(--checker-b) 25%, transparent 0 50%, var(--checker-b) 0 75%, transparent 0);
   background-size: 18px 18px;
-}
-
-@media (prefers-color-scheme: dark) {
-  .preview-stage[data-backdrop="checker"] {
-    --checker-a: #2a2b30;
-    --checker-b: #202126;
-  }
 }
 
 /* `margin: auto` rather than justify/align-content: centred flex content
@@ -927,7 +1091,7 @@ a {
   border: 0;
   /* An HTML report that sets no background of its own would otherwise show
      the panel's dark theme through, which is not what its author saw. */
-  background: white;
+  background: #ffffff;
 }
 
 .preview-audio {
@@ -991,7 +1155,7 @@ a {
   position: sticky;
   top: 0;
   z-index: 1;
-  background: var(--bg-sidebar);
+  background: var(--bg-raised);
 }
 
 .preview-table-rownum {
@@ -1038,12 +1202,12 @@ a {
 
 /* New badge kinds the preview work added to attachmentKind(). */
 .note-tree-ext[data-kind="web"] {
-  color: #e8590c;
+  color: var(--kind-web);
 }
 
 .note-tree-ext[data-kind="audio"],
 .note-tree-ext[data-kind="video"] {
-  color: #0c8599;
+  color: var(--kind-media);
 }
 
 /* ---------------------------------------------------------------------

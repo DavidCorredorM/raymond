@@ -1,8 +1,9 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ForceGraph2D, { type LinkObject, type NodeObject } from "react-force-graph-2d";
 import { useNavigate } from "react-router-dom";
 import { useGraph } from "../api/queries";
 import { noteHref } from "../lib/notePath";
+import { readGraphPalette, type GraphPalette } from "../lib/graphPalette";
 
 interface GraphNodeDatum {
   id: string;
@@ -10,18 +11,6 @@ interface GraphNodeDatum {
   /** Link count (in + out). Drives node size — see `nodeRadius`. */
   degree: number;
 }
-
-// Canvas fillStyle can't read CSS custom properties, so these are picked
-// once to read reasonably against both the light and dark palettes in
-// styles.css (--accent / --fg), not recomputed per frame.
-const PREFERS_DARK =
-  typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches;
-const NODE_COLOR = PREFERS_DARK ? "#7c93ff" : "#3b5bdb";
-const NODE_HIGHLIGHT_COLOR = PREFERS_DARK ? "#c3ceff" : "#1b3bb3";
-const LABEL_COLOR = PREFERS_DARK ? "#e8e8ea" : "#1a1a1a";
-const LINK_COLOR = PREFERS_DARK ? "rgba(154,154,162,0.4)" : "rgba(107,107,107,0.35)";
-const LINK_HIGHLIGHT_COLOR = PREFERS_DARK ? "rgba(195,206,255,0.9)" : "rgba(27,59,179,0.8)";
-const LINK_DIM_COLOR = PREFERS_DARK ? "rgba(154,154,162,0.1)" : "rgba(107,107,107,0.08)";
 
 /** How much of its colour an unrelated node keeps while something else is hovered. */
 const DIM_ALPHA = 0.18;
@@ -146,6 +135,19 @@ export function GraphRoute() {
   const [size, setSize] = useState({ width: 600, height: 400 });
   const [hoveredId, setHoveredId] = useState<string | null>(null);
 
+  // Read once at mount and again whenever the OS/browser theme flips —
+  // matchMedia's 'change' event, not a poll. ctx.fillStyle can't read a
+  // CSS custom property (see lib/graphPalette.ts), so this is the one
+  // place in the app that has to notice a theme change itself rather than
+  // letting the cascade do it.
+  const [palette, setPalette] = useState<GraphPalette>(() => readGraphPalette());
+  useEffect(() => {
+    const mql = window.matchMedia("(prefers-color-scheme: dark)");
+    const onChange = () => setPalette(readGraphPalette());
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  }, []);
+
   /**
    * A callback ref, not `useRef` + `useEffect([])`. The effect version ran
    * on the first commit — while `useGraph()` was still loading and this
@@ -252,7 +254,7 @@ export function GraphRoute() {
         nodeRelSize={1}
         nodeVal={(node) => nodeRadius(node.degree) ** 2}
         linkColor={(link) =>
-          hoveredId ? (touchesHovered(link) ? LINK_HIGHLIGHT_COLOR : LINK_DIM_COLOR) : LINK_COLOR
+          hoveredId ? (touchesHovered(link) ? palette.linkHighlight : palette.linkDim) : palette.link
         }
         linkWidth={(link) => (touchesHovered(link) ? 2 : 1)}
         linkDirectionalArrowLength={4}
@@ -269,7 +271,7 @@ export function GraphRoute() {
           ctx.beginPath();
           ctx.arc(x, y, radius, 0, 2 * Math.PI, false);
           ctx.fillStyle =
-            relation === "hovered" || relation === "neighbour" ? NODE_HIGHLIGHT_COLOR : NODE_COLOR;
+            relation === "hovered" || relation === "neighbour" ? palette.nodeHighlight : palette.node;
           ctx.fill();
 
           const alpha = labelAlpha(globalScale, relation);
@@ -285,7 +287,7 @@ export function GraphRoute() {
               (s) => ctx.measureText(s).width,
             );
             ctx.globalAlpha = alpha;
-            ctx.fillStyle = LABEL_COLOR;
+            ctx.fillStyle = palette.label;
             ctx.textBaseline = "middle";
             ctx.fillText(label, x + radius + 3 / globalScale, y);
           }

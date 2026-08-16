@@ -15,7 +15,15 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    /* Only `contrast.test.ts` needs this — it reads styles.css off disk
+       with `node:fs` so the WCAG check runs against the real stylesheet,
+       not a copy of it. `types` is otherwise empty by default and this
+       TS toolchain (7.0.2, observed here) does not implicitly pick up
+       `node:`-prefixed built-ins' ambient declarations the way earlier
+       majors did — omitting this makes `node:fs`/`node:url` unresolvable
+       even though `@types/node` is installed. */
+    "types": ["node"]
   },
   "include": ["src"]
 }
