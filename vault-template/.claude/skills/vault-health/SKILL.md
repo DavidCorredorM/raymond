@@ -37,3 +37,22 @@ reduces the next:
 ```sh
 _tools/vault-lint && echo "vault is clean"
 ```
+
+## When this isn't enough
+
+These three checks are the fast ones, meant for right after an import or
+a bulk rename. They say nothing about naming conventions, duplicate
+basenames, orphans, folders that have outgrown flat, or two notes
+claiming different things.
+
+That is the `vault-steward` skill, which runs on a schedule, checks the
+whole of `conventions.md`, and leaves a card in `steward/` for anything
+needing a human decision. It shares this skill's link resolution —
+`_tools/steward.py` imports `_tools/linkcheck.py` rather than resolving
+wiki-links a second way — so the two never disagree about what "broken"
+means.
+
+Reach for `vault-steward` when the vault feels disorganized rather than
+merely unlinted, when a rename or a reorganization is on the table (it
+owns `steward.py move`, the only safe way to move a note), or when two
+notes seem to contradict each other.

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Vault steward</title>
+    <!-- Relative paths only. The frame has no network: a CDN link, a web
+         font or a remote image loads nothing at all. -->
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header>
+      <div>
+        <strong id="resumen">Loading…</strong>
+        <!-- Honest about freshness. A queue fed by a scheduled job that
+             quietly died otherwise shows an empty list with total
+             confidence, which reads as "the vault is fine". -->
+        <span id="corrida" class="sutil"></span>
+      </div>
+      <button id="ver-cerradas" type="button" class="ligero">Show answered</button>
+    </header>
+
+    <p id="error" hidden></p>
+
+    <div id="tarjetas"></div>
+
+    <p id="vacio" hidden>
+      Nothing to review. Either the vault is tidy or the steward has not run
+      yet — <code>_tools/steward.py check</code> from the vault root, or the
+      <code>vault-steward</code> skill for the half that needs judgment.
+    </p>
+
+    <footer class="sutil">
+      Each card is a file in <code>steward/</code>. Answering here writes to
+      that file and nothing else; renames and moves happen on the next
+      steward run, where they leave a diff.
+    </footer>
+
+    <script src="bridge.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

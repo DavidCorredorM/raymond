@@ -1339,3 +1339,167 @@ re-checking per browser, since it fails closed and presents as "the trick
 doesn't render." Nothing was implemented — `panel/server/src/**` and
 `panel/web/src/**` are untouched; the spec's §13 lists the build order and
 which seams are parallel.
+
+## [2026-08-15] vault-steward: a self-organizing pass over the vault, every three days
+
+A default trick plus a skill plus a script, all in `vault-template/`. The
+ask was "fix broken links, misplaced notes, contradictions and stale
+facts, flag them as cards with an input box, and propose folder
+refactors" — with the priority stated explicitly: **organisation and
+naming first, contradictions second.**
+
+### The conventions document is the actual deliverable
+
+`vault-template/conventions.md`. "Keep the vault organized" cannot be
+enforced against anything, so nothing here checks a rule that is not
+written there: folder depth (1–3, ceiling 4), fan-out before a folder
+needs subfolders (20), the filename regex and length, the required
+frontmatter fields and their allowed values, where indexes live, the link
+minimums, and a "The numbers" table collecting every constant a checker
+reads. `CLAUDE.md` says how to work; `conventions.md` says what the
+result must look like, and is what a human argues with when the steward
+flags their file. Changing the rule is a stated legitimate outcome —
+otherwise the document is just the tool's source code in prose.
+
+Generic throughout (rule 5): no company names, no deployment paths,
+English prose with this vault's Spanish field names, and a section saying
+which they are and how to rename them all at once if a deployment's
+language differs (roadmap §8).
+
+### Deterministic and judgment, split on purpose
+
+`_tools/steward.py` (stdlib only — it runs from cron on a box where
+nobody has pip-installed anything) owns everything with one right answer:
+broken links, filenames, duplicate basenames, frontmatter, missing
+indexes and index rows, orphans, empty folders, fan-out, depth, notes
+loose at the root. The `vault-steward` skill owns contradictions,
+staleness, misplacement, and *what the subfolders of an overgrown folder
+should be*. The script prints its half of the work under a heading the
+skill reads.
+
+It **imports `_tools/linkcheck.py`** rather than resolving wiki-links a
+second way, including copying its treatment of an ambiguous bare name as
+resolved. Two link checkers that disagree is how both get ignored.
+
+`vault-health` was deliberately **not** absorbed. It stays the fast
+three-check thing a person reaches for after an import; the steward is
+the unattended, wider one. Both were pointed at each other in their own
+text.
+
+### Findings are files, and moving one is atomic with its links
+
+One file per finding in `steward/`, `tipo: hallazgo`, with the answer as
+five top-level frontmatter fields — `estado`, `respuesta`, `decision`,
+`respondido`, `actualizado`. Top-level and flat specifically so
+`vault.write.campos` can name them exactly; a nested answer block would
+have needed a `campos` shape the spec does not pin down. The machine
+detail sits in a nested `finding:` block with English keys, the same
+split `job:` and `widgets:` already use.
+
+`steward.py move A B` is the only sanctioned way to move or rename a
+note, and `CLAUDE.md` now says so next to a ban on `mv` and `git mv`. It
+refuses on a destination that exists, on a basename used anywhere else,
+and on a destination outside the vault; rewrites all three link forms;
+carries the note's index row across, description intact; and rolls
+everything back if any rewrite fails. Verified on a note with 46 inbound
+links moved across folders — `vault-lint` afterwards reported only the
+two broken links that were already there.
+
+### The boundary, written three times
+
+> Anything that can lose information is a proposal, never an automatic
+> action, however confident the analysis is.
+
+In `conventions.md` §5, at the top of `steward.py`, and in the skill.
+Three copies because a future author will be tempted in at least one
+place. Repointing a link is automatic (it was already broken, the old
+text is in git, and it needs exactly one candidate after normalization);
+deleting a "duplicate" note never is.
+
+### Four bugs the messy test vault found, all of them mine
+
+A scratch vault was generated with genuinely broken input — a link to a
+renamed note, an ambiguous link, two notes contradicting each other,
+`Untitled 3.md`, `Final Report (v2).md`, a bare date outside `daily/`,
+duplicate basenames, no-frontmatter notes, a note five folders deep, an
+empty folder, an orphan, and `reference/` with 43 flat files.
+
+1. **The steward found its own output and carded it.** Second run: cards
+   quoting broken link targets inside `[[ ]]` were scanned as notes,
+   producing `broken-link-broken-link-…` five deep. Two fixes, both
+   needed — every check runs against subjects excluding `steward/`, and a
+   card never renders a broken target inside brackets. Same shape as the
+   agent brief that contaminated the health counts on 2026-08-14, which
+   is why `.claude/` is skipped; a finding folder that Obsidian can open
+   cannot be, so the escaping is the mechanism instead.
+2. **Card spam.** `notes.md` in two folders was a duplicate basename, a
+   bad filename and an orphan: three cards asking three versions of the
+   same question. Now one card per note per run, most navigation-breaking
+   kind first, with multi-note findings always surviving because they
+   subsume the single-note ones. 19 cards became 11 on the same input.
+3. **A card's own links made its subjects look linked.** The fan-out card
+   lists 40 notes, so every one of them gained an inbound link and
+   stopped being reported as under-linked. Steward paths are now excluded
+   from inbound counts, alongside index files.
+4. **The auto-created index was itself carded** for being too deep — the
+   tool generating a file and then complaining about it. Indexes are
+   exempt from the depth rule; the folder is what is too deep, and the
+   notes inside already say so.
+
+Also: `conventions.md` initially failed its own link check, because a
+document explaining wiki-link syntax contains examples the checker cannot
+distinguish from mistakes. Fixed by naming targets in prose, and written
+down in §4 as a rule, since it is the same trap `_templates/` is skipped
+for.
+
+### Verified, and against what
+
+Against a **stub** of the v2 runtime in the scratchpad (Node, no deps)
+reproducing §5 serving, the `Sec-Fetch-*` gate, the exact headers, the
+§6 one-port-per-mount handshake and server-side capability enforcement
+read fresh from `trick.yaml` — because the real runtime's seams 2 and 3
+are being built right now:
+
+- the app renders in `sandbox="allow-scripts"` and takes its port
+- `vault.read` on expand, frontmatter stripped, evidence shown
+- an answer written to disk containing exactly the five declared fields
+- `vault.write` of an undeclared field (`titulo`) refused with
+  `capability_denied`, visible in the app, and the file unchanged
+- `datos.cambiaron` re-queries; `tema: oscuro`; 360 px wide with no
+  horizontal overflow
+- the entry gate: 403 with no `Sec-Fetch-*`, 403 top-level, 403
+  cross-site iframe, 200 same-origin iframe, 200 for a cross-site
+  *subresource* (the check that must not be applied there), 400 on a
+  path escape
+- called directly with curl, bypassing the frame: `vault.read` outside
+  `steward/` and `script.run` both denied
+
+Against the real thing: **nothing.** The panel cannot mount this yet.
+
+`observed:` synthetic mouse events from the browser-automation tool do
+**not** reach a document on an opaque origin inside
+`sandbox="allow-scripts"` — clicks were dispatched at correct
+coordinates, the host page's own capture-phase listener confirmed the
+coordinate mapping, and the frame never saw them. `read_page` also
+returns nothing for such a frame. The app was therefore driven by a
+`_driver.js` added to a **scratch copy** of `index.html` that dispatches
+`.click()` on the real buttons; `app.js` was diffed byte-for-byte against
+the shipped file. Anyone testing a trick in a browser will hit this.
+
+### Left undone
+
+- **No real panel run**, so `vault.read`'s and `vault.write`'s result
+  shapes stay `assumed:` in the app, as they are in `trick-creator`.
+- **The job is not installed.** `trick.yaml` declares `0 6 */3 * *` and
+  the skill hands off to `schedule-job`; the base package ships the brief
+  at `.claude/skills/vault-steward/brief.md` and no crontab. Until then
+  the app's header says so instead of implying the queue is fresh.
+- **`*/3` is not every 72 hours** — it resets at each month boundary,
+  giving a one- or two-day gap. Accepted and documented rather than
+  solved with a runner that tracks its own last-run date.
+- **`vault-template/` now ships one trick**, which `tricks-spec.md` §9
+  said it would not. Corrected there in one sentence: the steward is
+  default machinery whose queue needs a UI, not an example.
+- **Card ordering is by kind, not by cost of being wrong.** A
+  contradiction about a date somebody is about to act on and one about a
+  finished project sort the same.
