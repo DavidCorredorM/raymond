@@ -1,8 +1,12 @@
-import { useParams } from "react-router-dom";
-import { useAttachments } from "../api/queries";
+import { useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { useAttachments, useMoveAttachment } from "../api/queries";
 import { attachmentDownloadUrl, baseName, extensionOf, formatBytes } from "../lib/attachments";
-import { decodeRoutePath } from "../lib/notePath";
+import { decodeRoutePath, fileHref } from "../lib/notePath";
+import { buildAttachmentRenamePath } from "../lib/rename";
 import { AttachmentPreview } from "../preview/AttachmentPreview";
+import { RenameDialog } from "../components/RenameDialog";
+import { Icon } from "../icons/Icon";
 
 /**
  * The non-`.md` counterpart of NoteRoute (roadmap #9). Previously this was
@@ -21,10 +25,26 @@ import { AttachmentPreview } from "../preview/AttachmentPreview";
 export function AttachmentRoute() {
   const params = useParams();
   const path = decodeRoutePath(params["*"]);
+  const navigate = useNavigate();
   const { data: attachments, isLoading, isError, error } = useAttachments();
   const meta = attachments?.find((a) => a.path === path);
   const name = baseName(path);
   const ext = extensionOf(path);
+
+  const moveAttachment = useMoveAttachment();
+  const [renaming, setRenaming] = useState(false);
+  const [renameError, setRenameError] = useState<string | null>(null);
+
+  async function handleRename(newPath: string) {
+    setRenameError(null);
+    try {
+      await moveAttachment.mutateAsync({ from: path, to: newPath });
+      setRenaming(false);
+      navigate(fileHref(newPath));
+    } catch (err) {
+      setRenameError((err as Error).message);
+    }
+  }
 
   if (!path) {
     return <p className="muted">No file selected.</p>;
@@ -39,6 +59,15 @@ export function AttachmentRoute() {
             <a className="attachment-download" href={attachmentDownloadUrl(path)}>
               Download
             </a>
+            <button
+              type="button"
+              className="mode-toggle icon-button"
+              onClick={() => setRenaming(true)}
+              title="Rename this file"
+              aria-label="Rename this file"
+            >
+              <Icon name="rename" size={15} />
+            </button>
           </div>
         </div>
         <div className="note-meta">
@@ -69,6 +98,18 @@ export function AttachmentRoute() {
       <div className="attachment-body">
         <AttachmentPreview key={path} path={path} name={name} ext={ext} size={meta?.size} />
       </div>
+      {renaming && (
+        <RenameDialog
+          title="Rename file"
+          initialValue={name}
+          helperText="Files aren't referenced by [[links]] the way notes are, so nothing else needs updating."
+          validate={(input) => buildAttachmentRenamePath(path, input)}
+          onConfirm={handleRename}
+          onClose={() => setRenaming(false)}
+          busy={moveAttachment.isPending}
+          serverError={renameError}
+        />
+      )}
     </div>
   );
 }

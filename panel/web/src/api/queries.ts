@@ -2,9 +2,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchJSON, uploadAttachment, type UploadRequest } from "./client";
 import type {
   Attachment,
+  AttachmentMoveResult,
   AttachmentUploadResult,
   GraphResponse,
   NoteDetail,
+  NoteMoveResult,
   NoteSummary,
   TrickManifest,
   TrickSummary,
@@ -74,6 +76,37 @@ export function useSaveNote() {
 }
 
 /**
+ * Rename or move a note (owner's ask #4) — `POST /api/note/move`, the
+ * network face of `_tools/steward.py move`. `panel/server/src/rename.ts`
+ * does the actual work (link rewriting, the index-row transplant,
+ * rollback on partial failure); this mutation just calls it and
+ * invalidates every query whose answer the move could have changed —
+ * which, because the whole point is that a move can touch *other*
+ * notes' link text, is not just the note that moved.
+ */
+export function useMoveNote() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ from, to }: { from: string; to: string }) =>
+      fetchJSON<NoteMoveResult>("/api/note/move", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ from, to }),
+      }),
+    onSuccess: (result, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["notes"] });
+      queryClient.invalidateQueries({ queryKey: ["note", variables.from] });
+      queryClient.invalidateQueries({ queryKey: ["note", result.path] });
+      for (const path of result.edited) {
+        queryClient.invalidateQueries({ queryKey: ["note", path] });
+      }
+      queryClient.invalidateQueries({ queryKey: ["graph"] });
+      queryClient.invalidateQueries({ queryKey: ["vault-health"] });
+    },
+  });
+}
+
+/**
  * The vault's non-`.md` files (roadmap #9). Separate query from `useNotes`
  * on purpose — separate endpoint, separate shape — and merged into one tree
  * client-side (lib/vaultTree.ts). Same poll interval as the notes list: a
@@ -105,6 +138,22 @@ export function useUploadAttachment() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["attachments"] });
       queryClient.invalidateQueries({ queryKey: ["notes"] });
+    },
+  });
+}
+
+/** Rename or move an attachment — `POST /api/attachment/move`. No links to rewrite (roadmap #9: "a [[wiki-link]] to a PDF is not a thing"), so this is just a location change plus the same never-silently-overwrite 409 the upload endpoint uses. */
+export function useMoveAttachment() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ from, to }: { from: string; to: string }) =>
+      fetchJSON<AttachmentMoveResult>("/api/attachment/move", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ from, to }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["attachments"] });
     },
   });
 }

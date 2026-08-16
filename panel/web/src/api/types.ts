@@ -49,6 +49,21 @@ export interface AttachmentUploadResult {
   size: number;
 }
 
+/** POST /api/note/move success body. */
+export interface NoteMoveResult {
+  ok: true;
+  path: string;
+  /** Every other note this move rewrote a link in — "N notes were updated". */
+  edited: string[];
+  indexRowMoved?: string;
+}
+
+/** POST /api/attachment/move success body. */
+export interface AttachmentMoveResult {
+  ok: true;
+  path: string;
+}
+
 export interface BrokenLink {
   from: string;
   to: string;

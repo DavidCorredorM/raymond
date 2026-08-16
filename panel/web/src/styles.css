@@ -466,6 +466,13 @@ a {
   cursor: pointer;
 }
 
+.icon-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+}
+
 .save-button:hover:not(:disabled),
 .mode-toggle:hover {
   background: var(--border);
@@ -1429,6 +1436,88 @@ a {
   margin-top: 6px;
   font-size: 0.72rem;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* ---------------------------------------------------------------------
+   RenameDialog (owner's ask #4). A small modal — this app has no other
+   one yet, so the styling lives here rather than being assumed to exist.
+   --------------------------------------------------------------------- */
+
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: color-mix(in srgb, var(--fg) 45%, transparent);
+}
+
+.dialog {
+  width: 100%;
+  max-width: 420px;
+  padding: 20px 22px;
+  border-radius: var(--radius);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+}
+
+.dialog-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--accent);
+  margin-bottom: 14px;
+}
+
+.dialog-header h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  color: var(--fg);
+}
+
+.dialog-label {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--fg-muted);
+  margin-bottom: 4px;
+}
+
+.dialog-input {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 0.95rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.dialog-input:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.dialog-hint {
+  margin: 10px 0 0;
+  font-size: 0.82rem;
+  color: var(--fg-muted);
+  line-height: 1.5;
+}
+
+.dialog-error {
+  margin: 10px 0 0;
+  font-size: 0.82rem;
+  color: var(--broken);
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
 }
 
 /* ---------------------------------------------------------------------

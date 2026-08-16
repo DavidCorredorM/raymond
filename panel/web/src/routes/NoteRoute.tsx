@@ -1,15 +1,18 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
-import { useNote, useNotes, useSaveNote } from "../api/queries";
+import { useNavigate, useParams } from "react-router-dom";
+import { useMoveNote, useNote, useNotes, useSaveNote } from "../api/queries";
 import { Markdown } from "../markdown/Markdown";
 import { BacklinksPanel } from "../components/BacklinksPanel";
 import { buildSlugIndex } from "../lib/slugIndex";
-import { decodeRoutePath } from "../lib/notePath";
+import { decodeRoutePath, noteHref } from "../lib/notePath";
 import { stripFrontmatter } from "../lib/frontmatter";
+import { basenameOf, buildNoteRenamePath } from "../lib/rename";
 import { DashboardRenderer, isDashboardFrontmatter } from "../dashboards/DashboardRenderer";
 import { useEditorStore } from "../editor/editorStore";
 import { useUnsavedChangesGuard } from "../editor/useUnsavedChangesGuard";
 import { ResizablePanel } from "../components/ResizablePanel";
+import { RenameDialog } from "../components/RenameDialog";
+import { Icon } from "../icons/Icon";
 
 // CodeMirror + its language/autocomplete packages are a meaningful chunk of
 // weight (same reasoning as react-force-graph-2d in App.tsx) and are only
@@ -27,9 +30,13 @@ export function NoteRoute() {
   const notesQuery = useNotes();
   const slugIndex = useMemo(() => buildSlugIndex(notesQuery.data ?? []), [notesQuery.data]);
 
+  const navigate = useNavigate();
   const [mode, setMode] = useState<"view" | "edit">("view");
   const saveNote = useSaveNote();
   const [saveError, setSaveError] = useState<string | null>(null);
+  const moveNote = useMoveNote();
+  const [renaming, setRenaming] = useState(false);
+  const [renameError, setRenameError] = useState<string | null>(null);
 
   const storePath = useEditorStore((s) => s.path);
   const storeContent = useEditorStore((s) => s.content);
@@ -59,6 +66,25 @@ export function NoteRoute() {
       markSaved();
     } catch (err) {
       setSaveError((err as Error).message);
+    }
+  }
+
+  // Closing the dialog when the note itself changes underneath it (e.g.
+  // a sidebar click while it's open) avoids renaming the wrong note with
+  // a stale `path` closed over in `handleRename`.
+  useEffect(() => {
+    setRenaming(false);
+    setRenameError(null);
+  }, [path]);
+
+  async function handleRename(newPath: string) {
+    setRenameError(null);
+    try {
+      await moveNote.mutateAsync({ from: path, to: newPath });
+      setRenaming(false);
+      navigate(noteHref(newPath));
+    } catch (err) {
+      setRenameError((err as Error).message);
     }
   }
 
@@ -128,6 +154,15 @@ export function NoteRoute() {
               <button type="button" className="mode-toggle" onClick={() => setMode(mode === "edit" ? "view" : "edit")}>
                 {mode === "edit" ? "View" : "Edit"}
               </button>
+              <button
+                type="button"
+                className="mode-toggle icon-button"
+                onClick={() => setRenaming(true)}
+                title="Rename this note"
+                aria-label="Rename this note"
+              >
+                <Icon name="rename" size={15} />
+              </button>
             </div>
           </div>
           {saveError && <p className="note-error">Save failed: {saveError}</p>}
@@ -196,6 +231,24 @@ export function NoteRoute() {
       >
         <BacklinksPanel backlinks={note.backlinks} notes={notesQuery.data ?? []} />
       </ResizablePanel>
+      {renaming && (
+        <RenameDialog
+          title="Rename note"
+          initialValue={basenameOf(note.path).replace(/\.md$/i, "")}
+          helperText={
+            note.backlinks.length > 0
+              ? `This note is linked from ${note.backlinks.length} other note${
+                  note.backlinks.length === 1 ? "" : "s"
+                }; they will be updated automatically.`
+              : "Nothing links to this note yet."
+          }
+          validate={(input) => buildNoteRenamePath(note.path, input)}
+          onConfirm={handleRename}
+          onClose={() => setRenaming(false)}
+          busy={moveNote.isPending}
+          serverError={renameError}
+        />
+      )}
     </div>
   );
 }
