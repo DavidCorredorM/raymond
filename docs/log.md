@@ -1849,3 +1849,247 @@ opinion that makes a scope check unverifiable. Recorded in spec §14.
   refuses with `bad_request` naming the limit. The server is the
   authority and its ceiling is the wider one; recorded rather than
   silently reconciled.
+
+## [2026-08-15] Panel UI overhaul: palette, resizable panels, rename, live preview — and deployed
+
+The owner's list, in order: no emojis, resizable panels, a real colour
+palette, safe rename, a live-preview editor, a floating link into Claude
+Code on the web. All six shipped, plus the deferred graph-sizing question
+finally got a real-browser answer. Ten focused commits on `main`, then
+deployed to the one real machine. Full reasoning lives in each commit
+message; this entry is what happened, not a duplicate of them.
+
+### The palette, checked rather than eyeballed
+
+No published frame-by-frame colour analysis of the film exists (the
+cinema-palette sites covering roughly 250 films don't include it) — so the
+anchors are named colours from a published Southwest/desert palette set
+(Big Ox Printing's "Red Rock Canyon", "Cactus & Sage", "Turquoise & Clay",
+"Sunbaked Adobe", "Mesa Dusk"), cited by name in `styles.css` next to the
+token each one feeds. `panel/web/src/lib/contrast.ts` implements WCAG
+relative luminance and contrast ratio from scratch and
+`contrast.test.ts` parses the real stylesheet (not a copy of the values)
+and asserts every foreground/background pair at AA — it caught a real
+miss: Muted Olive as published (`#7D805F`) is 4.22:1 on the deepest
+surface, short of 4.5:1, which is why the shipped file-badge olive is
+darker than the source swatch. Lowest pair in the whole shipped set:
+4.82:1.
+
+The graph canvas painted six colours restated in JavaScript at module
+scope, keyed off `prefers-color-scheme` evaluated once at import — a
+second copy of the palette that this redesign would have silently left
+painting the old blue. Fixed by reading the same CSS custom properties
+back out of the document via `getComputedStyle` (`lib/graphPalette.ts`),
+updating on a `matchMedia` `change` listener.
+
+### Emoji, replaced with one inline SVG set
+
+Grep found three shapes: the Tricks list's fallback icon and every
+`trick.yaml`'s `icono:` field (rendered as literal text), the note
+tree's fold caret (a Unicode glyph standing in for an icon), nothing
+else. `icons/Icon.tsx` — one SVG per glyph, 20×20 viewBox, 1.6px stroke,
+round joins. The load-bearing part isn't the SVGs, it's
+`icons/TrickIcon.tsx`: `icono` is vault content the server validates only
+as `z.string().optional()`, so it's untrusted the moment it reaches the
+browser — an unrecognised value (including an emoji left over from before
+this change, or one a future agent writes without reading the updated
+skill) falls back to a generic icon rather than ever being rendered as
+literal text. There is no code path left in this app that echoes a
+vault-supplied string as an icon.
+
+### Resizable panels, and a real bug the browser found
+
+Sidebar and backlinks panel both get a draggable divider: continuous
+follow-the-pointer down to 0, a release below an 80px threshold snaps
+fully collapsed, double-click or Enter toggles against the last width the
+panel actually had, width and collapsed state persist in `localStorage`.
+`lib/resizable.ts` holds the arithmetic as plain functions (20 tests, no
+DOM).
+
+**Verified in a real Chrome session, and it caught something reading the
+code never would have:** clicking the divider never focused it —
+`document.activeElement` stayed `<body>` after a real click — so
+click-then-Enter (the documented fold/restore gesture) silently did
+nothing, while dragging and Tab-then-key both worked fine. Root cause:
+`onPointerDown` calls `preventDefault()` to stop the browser's own
+drag/text-selection gesture, which as a side effect also suppresses the
+browser's default click-to-focus behaviour. Fixed by focusing the
+divider explicitly in the handler, and re-verified in the same session:
+click, Enter restores from collapsed; click, ArrowRight resizes. Own
+commit (`web: fix resizable divider not receiving focus on click`),
+separate from the feature commit, since it was found and fixed after the
+feature had already landed and been committed.
+
+### Rename: made to agree with `steward.py move`, not invent a second mover
+
+Read `_tools/steward.py`'s `cmd_move` before writing anything — the task
+was explicit that two components each thinking they own "how a move
+works" is the failure shape this project keeps finding.
+`panel/server/src/rename.ts` ports it line for line: same validation
+order (not-a-note, destination-exists → 409, basename-uniqueness scoped
+to exactly the dot-path exclusion `steward.py`'s own `self.md` filter
+uses), same link-rewrite mechanics (every note whose raw link target
+resolves to the moved path gets `[[target]]`/`[[target|alias]]`/
+`[[target#heading]]` rewritten to the new bare slug, alias/heading suffix
+preserved), same index-row transplant including its known limit (only
+finds the row on a folder-only move — ported faithfully, not fixed, since
+the CLI tool and this endpoint have to keep agreeing), same rollback
+shape (every edit computed and every original held before the rename
+happens; a write failure after the rename restores everything and moves
+the file back).
+
+`assertNetworkWritable` is checked on **both** `from` and `to` — a
+move-specific point the note-write and upload endpoints didn't need to
+make: renaming a file *out of* `.claude/` still modifies `.claude/`
+(removes an entry) even though the destination alone would pass, so
+checking only `to` would let an unauthenticated caller disable a skill or
+a trick by relocating its file.
+
+`POST /api/note/move` and `POST /api/attachment/move`, both behind the
+existing cross-site guard, both requiring `application/json` (same
+preflight-forcing reasoning as `PUT /api/note`). 16 new server tests:
+all three link forms, alias/heading preservation, a same-basename false-
+positive guard (two similarly-named targets not cross-contaminating), the
+basename-clash refusal and its dot-path exemption, the index-row
+transplant, a destination-appeared-after-indexing race, and both
+`.claude/` refusal directions.
+
+Frontend: `RenameDialog` shows the consequence before the confirm
+button — "This note is linked from N other notes; they will be updated
+automatically," using `note.backlinks.length`, already on hand from the
+existing `GET /api/note` response. Renames in place only (same folder);
+moving between folders isn't exposed in this dialog — the owner isn't a
+coder and doesn't think in vault paths, `.md` is never shown, and a
+folder-picker is real additional UI for a need that wasn't asked for. The
+API already supports arbitrary `from`/`to` if that changes.
+
+**Verified end to end against a real scratch vault in a real browser**:
+renamed a note linked from two others (bare slug and a `#heading`-
+anchored form); both rewrote to the new bare slug on disk, confirmed by
+opening each linking note in the editor. Vault health after both renames:
+0 broken links. Tried renaming an attachment onto an existing filename:
+got the 409, in plain language, in the dialog.
+
+### Live preview: the highest-value item, not cut
+
+`editor/livePreview.ts` — pure, no CodeMirror import — takes one line's
+text, its document offset, and whether the cursor touches it, and
+returns which spans to visually collapse (`**`/`*`/`` ` ``/`#`/`[[`/`]]`)
+and which to style (bold, italic, code, heading size, the wikilink
+colour). 25 tests, covering all six heading levels, the two CommonMark
+edge cases (no space after `#`, a 7th `#`), adjacent bold/italic runs not
+cross-contaminating, and all three wiki-link forms. Formatting is not
+gated on the active line, only the delimiters are — bold stays visually
+bold while the cursor sits on that line, only the `**` reappears — which
+is the detail that makes it "live" rather than a mode switch, and it's
+what every piece of prior art the frontend plan cited converges on.
+
+Fenced code blocks are excluded (`computeFenceLines`, one forward pass
+over the whole document per rebuild, separate from the viewport-scoped
+decoration pass) — this vault's own `CLAUDE.md` and skill files are full
+of code samples containing literal `**` and `#`, and reading those as
+formatting would have been a real, visible bug on day one, not a
+hypothetical.
+
+**Verified in the real browser session, not just by the test suite**:
+opened a note with a heading, bold, italic, a wikilink, and a fenced
+`yaml` block containing literal `**nope**` inside it. Read mode and edit
+mode matched. Clicked into the heading line — the `#` reappeared, the
+line stayed bold. Clicked into the paragraph below — `**dark roast**`
+and the full raw `[[projects/rocket/plan|the rocket project]]` showed
+their real syntax; the heading line above, no longer active, re-hid its
+`#`. The fenced block's `**nope**` never bolded, on any line, active or
+not. Typed a sentence, saved, reloaded — persisted correctly as plain
+markdown.
+
+### The graph-sizing question, answered
+
+Roadmap carried this as unconfirmed: the callback-ref fix for the
+graph's `ResizeObserver` was believed correct by reading the code, but
+never confirmed in a foreground tab — a prior automated session could
+only reproduce the *symptom* (stuck at 600×400) by way of a backgrounded
+tab, where `requestAnimationFrame` never fires and no `ResizeObserver`
+callback is ever delivered.
+
+This session's automation tab reported `visibilityState: "hidden"`
+persistently at first — the same trap — but changed to `"visible"` with
+`document.hasFocus() === true` after enough interaction, and at that
+point the answer is unambiguous: canvas `width`/`height` attributes
+matched the container exactly (1424×929 against a 1424×929 container,
+not 600×400). **The bug is fixed**, confirmed in a genuinely foreground
+tab, not just reasoned about.
+
+### Deploy — and a second real bug found only by testing on the actual machine
+
+`git archive main | gzip`, verified clean (no `node_modules`, no `.git`,
+no `deployments/`-gitignored file) before copying. Backup taken first,
+distinctly named from the same-day backup already on the machine.
+Service stopped, tarball extracted over the existing checkout, `npm
+install`, then the server build — clean — then the web build, which
+**failed**: `tsc` errors in `src/tricks/TrickRenderer.tsx`,
+`ActionButton.tsx`, `ListaControl.tsx`, `ReadOnlyField.tsx` — the v1
+trick renderer, referencing API types deleted when v1 was retired
+(2026-08-15, "Tricks v2 host built, and v1 deleted rather than
+deprecated").
+
+Those files were never in the archive — `tar` extraction only ever adds
+or overwrites, it never deletes, so a file removed from git since the
+last deployment stays on disk forever unless something removes it. This
+had been silently true since the v1 deletion; nothing surfaced it until
+this session's web build ran on the actual machine, because every local
+build in every session since started from a real git checkout (where
+`git` itself removes files a commit deleted) rather than the tar-and-
+extract path production actually uses.
+
+Confirmed the scope precisely rather than guessing: diffed the tarball's
+file list against the machine's actual `panel/web/src` and
+`panel/server/src` trees. Five orphans, all under `web/src` (the four
+v1 files above, plus `wikilinkDecoration.ts` — deleted *this session*,
+superseded by live preview — already stale from the same class of gap
+one redeploy later). Zero orphans anywhere else, checked across the
+whole tree excluding `node_modules`/`dist`/`deployments`. Removed the
+five, rebuilt clean, started the service.
+
+**Left as a real gap, not fixed here:** the deploy procedure in every doc
+and in this session's own instructions says "extract over `~/raymond`"
+with no step that removes files a commit deleted. `git archive` cannot
+express deletions relative to a previous state — it produces a snapshot,
+not a diff — so the fix isn't a tar flag; it's either switching the
+deploy transport to something that can express deletions (an actual `git
+pull` against a now-real remote, which exists as of this session's
+`dd46c1e`, or `rsync --delete` scoped to exclude `node_modules`/`dist`)
+or adding an explicit clean step (`git -C <checkout-mirror> clean` logic,
+or the diff-and-remove done by hand here) to the documented procedure.
+Recorded here rather than in the deploy doc directly because fixing the
+procedure needs a decision about which transport, and tar-via-scp is
+still what the task specified for this pass.
+
+### Verified in a real browser vs. reasoned about
+
+Real, this session, foreground Chrome, against a scratch vault with real
+linked content: the palette (light only — dark theme's contrast is
+computed and asserted by 83 running tests, not separately screenshotted,
+since no tool here can force `prefers-color-scheme` on the actual OS/
+browser); every emoji replacement, including the trick-icon fallback;
+sidebar and backlinks resize, drag and keyboard both, including the
+focus bug and its fix; rename for both a note (link rewrite, 0 broken
+links after) and an attachment (success and the 409 conflict path); the
+live-preview editor's hide/reveal behaviour and a real save round-trip;
+the Claude Code launcher's presence and label; the graph's real size.
+Not independently verified: touch/iPad behaviour (no touch-emulation
+tool available here), Firefox/Safari (Chrome only, same gap prior
+sessions already carry for the tricks work).
+
+### Left undone
+
+- **Rename UI has no folder-move**, by design for this pass (see above)
+  — the server supports it, the dialog doesn't expose it.
+- **No conflict detection on rename** beyond the destination-exists
+  check — same plain-overwrite model every write path in this app
+  already has (frontend-implementation-plan.md §9).
+- **Blockquotes, tables, and interactive checkbox widgets** aren't part
+  of live preview — documented in `livePreview.ts` itself, not silently
+  missing. A clickable `- [ ]` needs a `WidgetType` that mutates the
+  document on click, real additional scope.
+- **The tar-deploy orphaned-file gap above** — worked around by hand
+  this time, not fixed in the documented procedure.

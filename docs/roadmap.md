@@ -353,6 +353,21 @@ workaround `deployments/angela.md` documented (that workaround existed
 *because* there was no remote to clone from — this is completing the
 design the docs already described, not changing it).
 
+**Concrete evidence this isn't a theoretical improvement:** the same-day
+UI-overhaul deploy (`docs/log.md`, "Deploy — and a second real bug found
+only by testing on the actual machine") hit exactly the failure mode a
+real `git pull` would have prevented. `tar` extraction only ever adds or
+overwrites; it never deletes, so four files removed from git months
+earlier when tricks v1 was retired were still sitting on the deployed
+machine's disk, and the next `tsc` build failed on them. Not caught by
+any local build in any session since, because every local build started
+from a real git checkout, where `git` itself removes what a commit
+deleted — only the tar-and-extract path production actually uses hits
+this. Fixed by hand that once (diffed the tarball against the machine's
+tree, removed the five orphans); the fix that doesn't need repeating is
+the puller below, or at minimum `rsync --delete` in place of `tar` in
+the documented procedure until the puller exists.
+
 **What does not exist yet — this section is the spec for it, not a
 built feature:**
 
