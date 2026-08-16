@@ -1430,3 +1430,39 @@ a {
   font-size: 0.72rem;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
+
+/* ---------------------------------------------------------------------
+   Claude Code launcher (owner's ask #6) — a floating, unobtrusive way
+   into a fresh Claude Code chat. Fixed to the corner so it's reachable
+   from any screen without a menu; a visible label rather than an icon
+   alone, and warm chrome instead of the panel's own --accent so it
+   reads as "leaves the app" rather than a primary in-app action.
+   --------------------------------------------------------------------- */
+
+.claude-code-launcher {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 16px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-decoration: none;
+  color: var(--accent-contrast);
+  background: var(--fg-muted);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+}
+
+.claude-code-launcher:hover {
+  background: var(--fg);
+}
+
+@media (pointer: coarse) {
+  .claude-code-launcher {
+    padding: 12px 18px;
+  }
+}

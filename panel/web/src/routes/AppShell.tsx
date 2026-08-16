@@ -1,4 +1,5 @@
 import { NavLink, Outlet } from "react-router-dom";
+import { ClaudeCodeLauncher } from "../components/ClaudeCodeLauncher";
 
 function navClass({ isActive }: { isActive: boolean }): string {
   return "app-nav-link" + (isActive ? " active" : "");
@@ -31,6 +32,7 @@ export function AppShell() {
       <div className="app-body">
         <Outlet />
       </div>
+      <ClaudeCodeLauncher />
     </div>
   );
 }
