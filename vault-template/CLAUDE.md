@@ -69,13 +69,13 @@ than either language.
 
 ```yaml
 ---
-titulo: Ficha de Juan Manuel Martínez
-tipo: nota | decision | gotcha | referencia | log | persona
-area: Personas
+titulo: Docker dev uses the beta database
+tipo: nota | decision | gotcha | referencia | log | persona | hallazgo
+area: infra
 estado: activo | reemplazado
 actualizado: 2026-08-12
-etiquetas: [aliados, cacao]
-cuando-usar: "Léela antes de preparar una reunión con Fedemol."
+etiquetas: [docker, gotcha]
+cuando-usar: "Read before pointing anything at the dev stack."
 ---
 ```
 
@@ -136,20 +136,30 @@ gets trusted later.
 ```
 vault/
 ├── CLAUDE.md         this file
+├── conventions.md    what the result must look like — see below
 ├── index.md          map of the whole vault
 ├── panel/            dashboards, rendered by the web panel — see below
 ├── daily/             dated logs, append-only
 ├── notes/             atomic evergreen notes
 ├── projects/          one folder per ongoing project
 ├── reference/          external material worth keeping
+├── steward/           open findings from the steward — see below
 ├── attachments/
 ├── _templates/        note and index templates
-├── _tools/            vault-search, vault-lint
+├── _tools/            vault-search, vault-lint, steward.py
 └── .claude/
     ├── skills/         Claude Code skills — see below
     ├── tricks/         mini apps the panel renders — see below
     └── jobs/           scheduled jobs: one note + one runner each — see below
 ```
+
+**`conventions.md` is the checkable half of this file.** This file says
+how to work; that one says what the result has to look like — folder
+depth and fan-out limits, the filename pattern, the required frontmatter
+fields and their allowed values, where indexes live — precisely enough
+for `_tools/steward.py` to check against and for a human to argue with.
+When the two disagree, one of them is a bug; fix it rather than picking a
+side in your head. Adding a rule to the vault means writing it there.
 
 This is a starting shape, not a fixed one. If your vault covers more than
 one distinct area — several companies, several separate projects that
@@ -200,13 +210,22 @@ something worth writing, not an error.
 |---|---|
 | `_tools/vault-search <terms>` | Tiered search, metadata before body |
 | `_tools/vault-lint` | Broken links, missing indexes, missing frontmatter |
+| `_tools/steward.py check` | The full sweep against `conventions.md`, plus the cards |
+| `_tools/steward.py move A B` | **The only way to move or rename a note.** Rewrites every inbound link in the same operation, or does nothing |
 
 Run `vault-lint` after any bulk move, rename or import. Those are when
 links rot.
 
+**Never move or rename a note with `mv`, `git mv`, or by writing a new
+file and deleting the old one.** A move that does not rewrite every
+inbound `[[wiki-link]]` breaks the vault silently, and it is silent
+because nothing complains until somebody clicks a link months later.
+`steward.py move` handles all three link forms, carries the note's row
+from one folder index to the other, and rolls back if any part fails.
+
 ## Skills
 
-Six, in `.claude/skills/`. Claude Code loads their descriptions at
+Seven, in `.claude/skills/`. Claude Code loads their descriptions at
 startup and fires them when a task matches:
 
 | Skill | Fires when |
@@ -214,6 +233,7 @@ startup and fires them when a task matches:
 | `capture-note` | something worth keeping was learned |
 | `daily-log` | a session ends |
 | `vault-health` | after an import, or when things feel messy |
+| `vault-steward` | the vault is drifting: contradictions, stale facts, a reorganization, or answering a card |
 | `migrate-notes` | bringing an existing vault in |
 | `trick-creator` | the user wants a UI — a tracker, a form, a chart, a button that runs something |
 | `schedule-job` | the user wants something to run on a schedule, or asks what's scheduled |
@@ -235,6 +255,36 @@ skill to add, change or remove one — never hand-edit the crontab, and
 never point a job's output at a generic "outputs" folder. Output belongs
 next to whatever it's about, chosen the way a person filing that document
 by hand would choose.
+
+## The steward
+
+Every three days, `vault-steward` checks this vault against
+`conventions.md` and leaves a queue of questions. Two halves, and the
+split is deliberate:
+
+- **`_tools/steward.py`** — a plain script, no model and no cost, for
+  everything with one right answer: broken links, filenames, duplicate
+  basenames, missing indexes, orphans, empty folders, folders that have
+  outgrown flat.
+- **the `vault-steward` skill** — the part that needs judgment:
+  contradictions between notes, facts that have gone stale, a note filed
+  in the wrong folder, and what the subfolders of an overgrown folder
+  should actually be.
+
+Findings are **files**, one per finding, in `steward/`, with a free-text
+`respuesta:` field. Answer one in the panel's steward trick or in any
+editor — they are the same act, writing the same field in the same file.
+
+The line that must not move, stated here as well as in `conventions.md`
+§5 and in `_tools/steward.py`, because it is what makes a thing that
+edits your notes overnight safe:
+
+> **Anything that can lose information is a proposal, never an automatic
+> action** — however confident the analysis is. Repointing a broken link
+> is automatic. Deleting a "duplicate" note is not, and never will be.
+
+`vault-health` is unchanged and still the right thing for "is my vault
+okay right now". The steward is the unattended, wider, slower one.
 
 ## Tricks
 

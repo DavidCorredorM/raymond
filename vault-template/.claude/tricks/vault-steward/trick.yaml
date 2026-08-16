@@ -1,0 +1,76 @@
+# The steward's review queue.
+#
+# Unlike the starters in _plantillas/, this trick ships in the base
+# package and is meant to work as-is: the folder it reads is `steward/`,
+# which _tools/steward.py creates, and no path here needs changing after
+# install. Change `titulo`/`icono` if you like; changing `carpeta` points
+# it at a folder nothing writes to.
+
+titulo: "Vault steward"
+descripcion: "What the steward found: contradictions, stale facts, and moves it wants to make. Answer a card and the next run acts on it."
+icono: "🩺"
+
+app:
+  entrada: "index.html"
+  alto: 620
+
+# The narrowest set that lets a person answer a card.
+#
+# It reads findings in one folder and writes five named fields back to
+# them. It cannot create a note (`crear` is absent, so false), cannot
+# touch any note body (`cuerpo` absent), cannot see a single file outside
+# `steward/`, and cannot run anything.
+#
+# Deliberately NOT declared, and each one is a decision, not an omission:
+#
+#   script.run   — the scan takes longer than correr_script's hard 5 s
+#                  timeout, and applying a move edits notes all over the
+#                  vault. Structural change belongs to the scheduled job,
+#                  where it leaves a run row and a git commit behind
+#                  (README rule 4). A browser button is the wrong shape
+#                  for it, not merely a slower one.
+#   estado       — every piece of state this app has is already a file in
+#                  `steward/`. A second store the user cannot read would
+#                  be rule 1 with a hole in it.
+#   vault.write  — on anything but `steward/`. The app records what the
+#                  user says is true; it never edits the notes that are
+#                  in dispute. That is the agent's half, and it happens
+#                  where it can be reviewed in a diff.
+#
+# No `campos:` under vault.query: it is a projection allowlist, not an
+# authority boundary, and the note-summary title key is still unsettled
+# between `title` and `titulo` (see _plantillas/lista/app/app.js). The
+# scope that matters is `carpeta` plus the `frontmatter` filter, and both
+# are set.
+capacidades:
+  vault.query:
+    carpeta: "steward"
+    frontmatter: { tipo: hallazgo }
+    limite: 200
+
+  vault.read:
+    carpeta: "steward"
+    extensiones: [".md"]
+
+  vault.write:
+    carpeta: "steward"
+    campos: [estado, respuesta, decision, respondido, actualizado]
+
+  # Shows "last run 06:00, exit 0" in the header. If no job is installed
+  # the op comes back not_found and the app says so rather than implying
+  # the list is fresh.
+  trabajo.estado:
+    job: "vault-steward"
+
+# A declaration, not an installation — nothing runs until `schedule-job`
+# writes the runner, the registry note and the cron entry. See
+# .claude/skills/vault-steward/SKILL.md §7.
+#
+# `*/3` in the day-of-month field means days 1, 4, 7 … 28, 31 and then
+# resets, so a month boundary can give a one- or two-day gap. That is
+# accepted: "roughly every three days" is what this needs, and the
+# alternative is a runner that tracks its own last-run date.
+programacion:
+  cron: "0 6 */3 * *"
+  accion: revisar_vault
+  requiere_llm: true

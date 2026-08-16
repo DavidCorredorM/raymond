@@ -282,3 +282,51 @@ are the parts deliberately left out of it.
   today and should probably be a dashboard widget instead. If that turns
   out to be wrong, the answer is a *query*-shaped capability with a fixed
   filter, not a wider `carpeta`.
+
+## 12. Vault steward — what the first version deliberately does not do
+
+Opened 2026-08-15 with `vault-template/conventions.md`,
+`vault-template/_tools/steward.py`, the `vault-steward` skill and the
+trick of the same name. The design is in the skill; these are the gaps.
+
+- **The job is not installed anywhere.** The trick declares
+  `programacion: 0 6 */3 * *` and the skill hands off to `schedule-job`,
+  which is correct — the base package must not write a crontab — but it
+  means no steward run has ever happened unattended on any machine. The
+  first real deployment to install it is the first real test of the
+  brief, and of whether ten judgment cards per run is the right cap.
+- **`*/3` is not "every three days".** Day-of-month `*/3` fires on days
+  1, 4, 7 … 28, 31 and resets, so month boundaries give a one- or
+  two-day gap. Accepted deliberately: the alternative is a runner that
+  reads its own last-run date out of the job note, which is more moving
+  parts than "roughly every three days" is worth. Revisit only if
+  something downstream actually needs even spacing.
+- **Nothing measures whether the cards get answered.** A queue that grows
+  monotonically is the obvious failure mode of this whole idea, and there
+  is no signal for it today. The cheapest version is a line in the run
+  report — "12 open, 9 of them older than a month" — before anything
+  fancier.
+- **Card priority is by kind, not by consequence.** `KIND_ORDER` puts
+  navigation-breaking findings first, which is right for the
+  deterministic half and meaningless for the judgment half: a
+  contradiction about a date somebody is about to act on sorts exactly
+  like one about a project that finished last year. The steward has no
+  notion of what the user is currently working on. `daily/` is the
+  obvious signal and is not used.
+- **Staleness detection is the weakest half and is labelled as such.**
+  The skill's test — does the *claim* have an expiry, rather than is the
+  note old — is a judgment a model makes inconsistently. Expect
+  `confidence: low` cards that are noise, and expect to tune the wording
+  in the skill rather than the script.
+- **No conflict detection between the steward and a human editing at the
+  same time.** Carried over from tricks v2 (§11, and `tricks-spec.md`
+  §7.3): writes are plain overwrites. A scheduled run at 06:00 and
+  somebody typing in Obsidian at 06:00 can clobber each other. The window
+  is small and the loss is recoverable from git, which is why this is a
+  note rather than a blocker.
+- **The base package now ships one trick**, which `panel/docs/tricks-spec.md`
+  §9 originally said it would not. That sentence was corrected rather
+  than the decision reversed: the steward is default machinery whose
+  queue needs a UI, not an example of what a trick can be. If a second
+  default trick is ever proposed, this is the precedent to argue with —
+  the rule is "no examples", not "no tricks".

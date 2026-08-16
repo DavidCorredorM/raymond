@@ -861,9 +861,12 @@ mechanism here**, and nothing in the server writes a crontab.
 
 ## 9. Migration from v1
 
-There are **no tricks in `vault-template/`** — the base package ships the
-mechanism, not an example — so the base-package migration cost is the docs
-and the skill, not data. At least one real deployment has v1 tricks.
+The base package ships the **mechanism, not examples**, so its migration
+cost is the docs and the skill, not data. (Amended 2026-08-15: there is
+now exactly one trick in `vault-template/`, `vault-steward`. It is default
+machinery whose review queue needs a UI, not an example of what a trick
+can be, and it is v2 already. The rule is "no examples", not "no tricks".)
+At least one real deployment has v1 tricks.
 
 1. **v1 is retired as an authoring target.** `trick-creator` stops emitting
    `ui.campos`/`control:` manifests the moment its v2 rewrite lands.
