@@ -129,12 +129,18 @@ Tailscale. Three destinations:
   no network of its own, no storage, and no handle on the panel's page.
   Its only route to the vault is a `postMessage` bridge scoped to the
   capabilities its manifest declares, folder by folder and field by
-  field; anything undeclared is denied. `trick-creator` builds them from
-  a plain-language request, starting from the working examples in
+  field; anything undeclared is denied, visibly, next to the trick.
+  **There is one kind of trick** — the older fixed-vocabulary renderer
+  (`lista`, `boton`, `checkbox`, …) was deleted on 2026-08-15, not
+  deprecated, and a manifest still written that way is now simply
+  invalid: skipped from the listing with a logged reason.
+  `trick-creator` builds them from a plain-language request, starting
+  from the working examples in
   `vault-template/.claude/tricks/_plantillas/`. The `correr_script`
-  boundary is unchanged and is the strictest thing in the app: the
-  client selects an index, never a path or an argument. Design and the
-  measurements behind it: `panel/docs/tricks-spec.md`.
+  boundary is older than any of this and unchanged, and is the strictest
+  thing in the app: the client selects an index, never a path or an
+  argument. Design and the measurements behind it:
+  `panel/docs/tricks-spec.md`.
 
 Fourteen API endpoints total, all documented at the top of
 `panel/server/src/index.ts`: notes (list/read/write), attachments
@@ -167,12 +173,18 @@ Verified by actually running it, not by reading the code and assuming:
 - [x] Dashboards: `query`, `count`, `vault-health` widget kinds
 - [x] Vault graph, note tree with fold/collapse, markdown editor with
       autocomplete and a save-guard
-- [x] Tricks: listing, detail rendering, `lista` control, and
-      `correr_script` — independently attacked (shell injection, path
-      traversal, request forgery) before being trusted, not just tested
-      for the happy path
-- [ ] Dashboard/trick write actions (`set`, `crear_nota`, `archivar`) —
-      parse correctly, don't execute yet
+- [x] Tricks v2: a real app mounts in a sandboxed frame, renders, and
+      completes a round trip through the bridge to a real file on disk —
+      including running a `correr_script` action. Independently attacked
+      (shell injection, path traversal, request forgery, a frame that
+      navigates itself, a message claiming to be another trick, an
+      undeclared capability) before being trusted, not just tested for
+      the happy path. The v1 fixed-vocabulary renderer is deleted
+- [ ] `trabajo.estado` — the one capability in the vocabulary the bridge
+      does not implement; it answers `unsupported_op` and waits on the
+      jobs view so the two share one parser
+- [ ] Dashboard write actions (`set`, `crear_nota`, `archivar`) — parse
+      correctly, don't execute yet
 - [ ] Live-preview editing (hide markdown syntax except on the cursor's
       line) — deferred, a genuinely separate chunk of work from the
       plain syntax-highlighted editor that *is* built

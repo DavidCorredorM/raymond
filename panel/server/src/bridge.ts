@@ -758,7 +758,10 @@ async function opEstadoSet(
 }
 
 // ---------------------------------------------------------------------------
-// script.run (§7.5) — the v1 boundary, reached through the bridge.
+// script.run (§7.5) — the `correr_script` boundary, reached through the
+// bridge. It predates the deleted v1 renderer and is unchanged by its
+// removal: the four constraints in §11 are what make it safe, and none
+// of them had anything to do with how a trick was drawn.
 // ---------------------------------------------------------------------------
 
 async function opScriptRun(

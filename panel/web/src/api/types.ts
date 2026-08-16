@@ -86,11 +86,28 @@ export interface GraphResponse {
 
 /**
  * Trick shapes mirrored from `server/src/tricks.ts` (tricks-spec.md).
- * The backend validates `titulo` (required) and shallow shapes only —
- * `ui`/`acciones` internals are typed loosely here and each renderer
- * (like each dashboard widget) parses the piece it actually uses with
- * its own zod schema.
+ *
+ * A trick is a mini app in a sandboxed frame and nothing else — the
+ * fixed-vocabulary manifest (`ui.campos`, `control:`) and the renderer
+ * that drew it were deleted 2026-08-15, so there is no `tipo`
+ * discriminator and no second shape to branch on. A manifest the server
+ * cannot validate never reaches the frontend: it is skipped from
+ * `GET /api/tricks` with a logged reason and 404s on the detail route.
+ *
+ * The frontend deliberately does **not** model `acciones`. A v2 app runs
+ * a script by sending `{ op: "script.run", params: { indice } }` over the
+ * bridge; the panel is the courier and never needs to know what the
+ * action is called or what it does.
  */
+
+/** The complete capability vocabulary (spec §7). Manifest keys, not ops. */
+export type TrickCapability =
+  | "vault.query"
+  | "vault.read"
+  | "vault.write"
+  | "estado"
+  | "script.run"
+  | "trabajo.estado";
 
 /** GET /api/tricks item. */
 export interface TrickSummary {
@@ -98,51 +115,24 @@ export interface TrickSummary {
   titulo: string;
   descripcion?: string;
   icono?: string;
+  /** Frame height the manifest asked for, defaults already resolved server-side. */
+  alto: number;
+  /** `[]` means the app gets no bridge at all — a valid state for a purely visual trick. */
+  capacidades: TrickCapability[];
 }
 
-export interface TrickCorrerScript {
-  ruta: string;
-  args?: string[];
-}
-
-export interface TrickAccionDef {
-  correr_script?: TrickCorrerScript;
-  set?: Record<string, unknown>;
-  crear_nota?: unknown;
-  archivar?: unknown;
-}
-
-export interface TrickAccion {
-  etiqueta?: string;
-  control?: string;
-  accion?: TrickAccionDef;
-  [key: string]: unknown;
-}
-
-/** One entry of `ui.campos` — shape depends on `control`, see tricks-spec.md. */
-export interface TrickCampo {
-  campo?: string;
-  etiqueta?: string;
-  control?: string;
-  [key: string]: unknown;
-}
-
-/** GET /api/tricks/:name — the full parsed trick.yaml manifest. */
+/**
+ * GET /api/tricks/:name — the full parsed manifest, with every default
+ * resolved. `capacidades` values are the server's normalized capability
+ * objects (`carpeta`, `campos`, `limite`, …); the host reads the keys for
+ * its first-line check and the `carpeta`s for the freshness poll, and
+ * treats the rest as opaque — the server is the authority on all of it.
+ */
 export interface TrickManifest {
   name: string;
   titulo: string;
   descripcion?: string;
   icono?: string;
-  datos?: unknown;
-  ui?: { layout?: string; campos?: TrickCampo[] };
-  acciones?: TrickAccion[];
-}
-
-/** POST /api/tricks/:name/run */
-export interface TrickRunResult {
-  ok: boolean;
-  stdout: string;
-  stderr: string;
-  exitCode: number | null;
-  timedOut: boolean;
+  app: { entrada: string; alto: number };
+  capacidades: Partial<Record<TrickCapability, unknown>>;
 }

@@ -1,6 +1,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { appRequestGate, appContentType, resolveAppFile, TrickError } from "./tricks.js";
+import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  appRequestGate,
+  appContentType,
+  listTricks,
+  readTrickManifest,
+  resolveAppFile,
+  TrickError,
+} from "./tricks.js";
 
 /**
  * The two pure functions that decide who gets a trick's app and which
@@ -86,4 +96,90 @@ test("content types come from an allowlist and are never sniffed", () => {
   // thought about.
   assert.equal(appContentType("weird.xyz"), "application/octet-stream");
   assert.equal(appContentType("noextension"), "application/octet-stream");
+});
+
+// ---------------------------------------------------------------------------
+// There is one kind of trick. These tests are the fence around the v1
+// deletion: a manifest in the old fixed-vocabulary shape must fail the way
+// any other invalid manifest fails — skipped from the listing with a
+// logged reason — and must never reach a second renderer.
+// ---------------------------------------------------------------------------
+
+async function scratchVault(tricks: Record<string, string>): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), "raymond-tricks-"));
+  for (const [name, yaml] of Object.entries(tricks)) {
+    await mkdir(join(dir, ".claude/tricks", name, "app"), { recursive: true });
+    await writeFile(join(dir, ".claude/tricks", name, "trick.yaml"), yaml);
+    await writeFile(join(dir, ".claude/tricks", name, "app/index.html"), "<p>hi</p>");
+  }
+  return dir;
+}
+
+const V1_MANIFEST = `titulo: "Old"
+datos:
+  carpeta: "notas"
+ui:
+  layout: lista
+  campos:
+    - campo: estado
+      control: lista
+acciones:
+  - etiqueta: "Archive"
+    control: boton
+    accion:
+      archivar: true
+`;
+
+const V2_MANIFEST = `titulo: "New"
+app:
+  entrada: "index.html"
+  alto: 300
+capacidades:
+  estado:
+    max_bytes: 1024
+`;
+
+test("a v1 manifest has no app: block, so it is simply invalid", async () => {
+  const dir = await scratchVault({ viejo: V1_MANIFEST });
+  await assert.rejects(() => readTrickManifest(dir, "viejo"), TrickError);
+});
+
+test("an invalid manifest is skipped from the listing, with the reason handed to the caller to log", async () => {
+  const dir = await scratchVault({ viejo: V1_MANIFEST, nuevo: V2_MANIFEST });
+  const skipped: string[] = [];
+  const list = await listTricks(dir, (name) => skipped.push(name));
+  assert.deepEqual(
+    list.map((t) => t.name),
+    ["nuevo"],
+  );
+  assert.deepEqual(skipped, ["viejo"]);
+  // No `tipo` discriminator any more: there is nothing to discriminate.
+  assert.equal("tipo" in list[0], false);
+  assert.equal(list[0].alto, 300);
+  assert.deepEqual(list[0].capacidades, ["estado"]);
+});
+
+test("the deleted action verbs are not a vocabulary the manifest can still name", async () => {
+  // `set`/`crear_nota`/`archivar` used to validate and do nothing. They
+  // now fall through `.passthrough()` unread — the point of the test is
+  // that `correr_script` is the only thing `runTrickAction` can find, so
+  // an action declaring only `archivar:` is not runnable rather than
+  // silently accepted as one.
+  const dir = await scratchVault({
+    x: `${V2_MANIFEST}acciones:
+  - etiqueta: "Archive"
+    accion:
+      archivar: true
+`,
+  });
+  const manifest = await readTrickManifest(dir, "x");
+  assert.equal(manifest.acciones?.[0]?.accion?.correr_script, undefined);
+});
+
+test("app.alto defaults, and app: with nothing in it is still an app trick", async () => {
+  const dir = await scratchVault({ x: 'titulo: "T"\napp: {}\n' });
+  const manifest = await readTrickManifest(dir, "x");
+  assert.equal(manifest.app.entrada, "index.html");
+  assert.equal(manifest.app.alto, 480);
+  assert.deepEqual(manifest.capacidades, {});
 });

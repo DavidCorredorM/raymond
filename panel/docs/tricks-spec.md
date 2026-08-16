@@ -1,13 +1,21 @@
 # Tricks — mini apps in the panel
 
-**v2. Supersedes the v1 fixed-vocabulary design**, which is described here
-only where migration needs it. Rewritten in place rather than added
-alongside: `README.md`, `vault-template/CLAUDE.md`,
+**This is the whole design. There is one kind of trick.** The v1
+fixed-vocabulary renderer and everything that fed it were deleted on
+2026-08-15 — code, manifest fields, docs — after the one real v1 trick on
+the one real deployment was removed, so nothing depended on them. v1
+appears below only where the *reasoning* is worth keeping (§1's why, §9's
+record of the deletion); it is never a second path a manifest can still
+take.
+
+Rewritten in place rather than added alongside: `README.md`,
+`vault-template/CLAUDE.md`,
 `vault-template/.claude/skills/trick-creator/SKILL.md`,
 `panel/server/src/tricks.ts` and several `docs/log.md` entries all point at
 this path, and a stable path is worth more than preserving prose that is no
-longer the design. What survived from v1 is carried forward in substance,
-not by reference — in particular the whole `correr_script` trust boundary.
+longer the design. What survived is carried forward in substance, not by
+reference — in particular the whole `correr_script` trust boundary, which
+predates v1's renderer and is untouched by its removal.
 
 Read `README.md`'s five rules first, especially **rule 3 (no
 authentication — the tailnet is the perimeter)**. Every shape in this
@@ -28,7 +36,8 @@ of its own, and reaches the vault only through a `postMessage` bridge
 scoped to the capabilities its manifest declares. An agent creates one by
 writing files (rule 2); the files are the only state (rule 1).
 
-What v1 was, and why it went:
+What v1 was, and why it went — kept because the reasoning generalizes,
+not because any of it still runs:
 
 > v1 shipped a fixed set of controls — `lista`, `boton`, `texto`,
 > `checkbox`, `fecha`, `select`, `formulario` — because "rendering
@@ -205,7 +214,6 @@ capacidades:
 
 acciones:
   - etiqueta: "Regenerar el resumen"
-    control: boton
     accion:
       correr_script:
         ruta: ".claude/tricks/gastos/resumen.sh"
@@ -227,15 +235,15 @@ degrade-gracefully behaviour, unchanged.
 | Field | Rule |
 |---|---|
 | `titulo` | required, string |
-| `app` | optional. Present ⇒ the trick is an app trick. Absent ⇒ legacy v1 (§9) |
-| `app.entrada` | single relative path, no `..`, must resolve under `app/`, must end `.html` |
-| `app.alto` | integer 120–2000 |
+| `app` | **required.** A trick is a document the panel mounts; a manifest naming none cannot be honoured. `app: {}` is fine — the defaults apply |
+| `app.entrada` | single relative path, no `..`, must resolve under `app/`, must end `.html`. Default `index.html` |
+| `app.alto` | integer 120–2000. Default 480 |
 | `capacidades` | optional map. **Absent or empty means the app gets no bridge at all** — a perfectly good state for a purely visual trick |
 | `capacidades.*` | every key must be a known capability name (§7). An unknown name invalidates the manifest — silently ignoring it is how a typo becomes "why doesn't my app work" |
 | `*.carpeta` | required for `vault.*`. Vault-relative, no `..`, no leading `/`. **`""`, `"."` and `"/"` are refused** — "the whole vault" is not a capability |
 | `vault.write.carpeta` | additionally: must not resolve under `.claude/` **unless** it is exactly `.claude/tricks/<this trick>/data` or below it |
-| `acciones` | unchanged from v1 |
-| `programacion` | unchanged from v1 — still a declaration, not an installation (§8) |
+| `acciones` | optional list. The only verb is `correr_script` (§11). `set`, `crear_nota` and `archivar` are **gone** — they existed so the deleted renderer's manifests validated, were never implemented, and a v2 app does those things itself through `vault.write`. Unknown keys on an entry are ignored, not honoured |
+| `programacion` | a **declaration**, not an installation (§8) |
 
 Manifests are read fresh from disk on every request that depends on them.
 Never cached, never taken from a request body. This is already how
@@ -679,6 +687,58 @@ And the six decisions behind them:
 not `capability_denied`, which would send an author hunting a manifest bug
 that is not there.
 
+### 6.9 The host, as built
+
+> **Added 2026-08-15 while implementing seam 2.** Nothing in §6.1–§6.8
+> changed. This records the choices the host had to make that the sections
+> above left open, so the next person reading `TrickHost.tsx` finds the
+> reasoning here rather than reverse-engineering it.
+
+`panel/web/src/tricks/TrickHost.tsx` is the component; the parts worth
+attacking are pure functions in `panel/web/src/tricks/protocol.ts` and are
+unit-tested there.
+
+- **Which refusals are dropped and which are answered.** Only the four
+  §6.4 malformations are dropped (missing/unknown `v`, missing or
+  non-scalar `id`, non-string `op`, non-object `params`). Everything else
+  — over the size limit, over a rate limit, undeclared capability, unknown
+  op, a duplicate in-flight `id` — is a well-formed request and gets
+  exactly one answer.
+- **A limit refusal is `too_many_requests`; an oversized message is
+  `bad_request`.** §6.6 names the limits but not their codes. `bad_request`
+  for size because the caller sent something invalid; `too_many_requests`
+  for both the 32-in-flight cap and the token bucket, because from the
+  frame's side they are the same fact.
+- **An answer larger than 256 KiB is refused rather than truncated or
+  silently dropped.** This can happen through no fault of the app:
+  `vault.read` has a 1 MiB server-side ceiling, so a 900 KiB file is a
+  legal read whose *answer* breaks the message limit. The frame gets
+  `bad_request` naming the limit. See §14 — the two ceilings disagree and
+  the server's is the wider one.
+- **A pending request expires at 15 s with `internal`**, and the late HTTP
+  answer is then discarded rather than sent as a second response. There is
+  no `timeout` code in §6.5's table and inventing one would fork it.
+- **No capabilities ⇒ no `MessageChannel` is created at all**, per §4.1 —
+  not a port that denies everything. The panel says so in its own chrome
+  under the frame, because "nothing happens and I don't know why" is the
+  failure this design most needs to avoid.
+- **Refusals are shown outside the iframe**, in the panel's chrome, with
+  the op, the code and the server's message; `capability_denied` gets an
+  extra line naming `trick.yaml`. A spinning trick would push those off
+  the list, so limit refusals are reported once and then every 25th, with
+  a running count.
+- **The freshness poll reads `/api/notes` *and* `/api/attachments`.** §8
+  says "the vault index"; the HTTP surface splits it in two, and a trick
+  whose `vault.read` declares `.json`/`.csv` — or whose only scope is its
+  own `estado.json` — would otherwise never hear that its data changed.
+- **`tema` comes from `prefers-color-scheme`**, sent in the hello and
+  again as an event on change. The panel has no theme switcher of its own;
+  when it gets one, that is where this reads from.
+- **The window-level `message` listener exists to log and discard.** §6.3
+  requires that ops arriving that way carry no weight. A listener that
+  names the fact and refuses to act on it is harder to accidentally turn
+  into a handler than no listener at all.
+
 ---
 
 ## 7. Capabilities
@@ -851,7 +911,7 @@ re-renders from that event is correct after an overnight run without doing
 anything special. Polling rather than SSE because the panel has no push
 transport today; SSE is a later, mechanical upgrade behind the same event.
 
-`programacion` is unchanged from v1 and remains a **declaration**.
+`programacion` remains a **declaration**.
 Materializing it is the `schedule-job` skill's job
 (`vault-template/.claude/skills/schedule-job/`), which writes the runner,
 the registry note and the cron block. **Do not build a second scheduling
@@ -859,41 +919,69 @@ mechanism here**, and nothing in the server writes a crontab.
 
 ---
 
-## 9. Migration from v1
+## 9. v1 is gone — what was deleted, and what deliberately was not
 
-The base package ships the **mechanism, not examples**, so its migration
-cost is the docs and the skill, not data. (Amended 2026-08-15: there is
-now exactly one trick in `vault-template/`, `vault-steward`. It is default
-machinery whose review queue needs a UI, not an example of what a trick
-can be, and it is v2 already. The rule is "no examples", not "no tricks".)
-At least one real deployment has v1 tricks.
+**Done 2026-08-15**, in one change rather than behind a flag. The one real
+v1 trick on the one real deployment had already been deleted, so nothing
+in the world depended on it; the compatibility window this section used to
+describe was never needed and was removed before it could become a second
+system anybody maintained.
 
-1. **v1 is retired as an authoring target.** `trick-creator` stops emitting
-   `ui.campos`/`control:` manifests the moment its v2 rewrite lands.
-2. **The panel keeps rendering v1 manifests for one release.** A manifest
-   with no `app:` block renders through the existing `TrickRenderer`, with
-   a visible "legacy trick" label and a line saying how to convert it. This
-   is a compatibility window, not a supported second system: no v1 bug gets
-   fixed, no v1 primitive gets added.
-3. **Conversion is mechanical**, because the vocabulary is small. The base
-   package ships starter apps at
-   `vault-template/.claude/tricks/_plantillas/`:
+The base package ships the **mechanism, not examples**, so its cost here
+was docs and code, not data. (Amended 2026-08-15: there is now exactly one
+trick in `vault-template/`, `vault-steward`. It is default machinery whose
+review queue needs a UI, not an example of what a trick can be, and it is
+v2 already. The rule is "no examples", not "no tricks".) The one real
+deployment's only v1 trick was an unfinished test and was deleted the same
+day, which is what made deletion rather than deprecation the cheap option.
 
-   | Starter | Replaces |
-   |---|---|
-   | `lista/` | `lista` + `checkbox` + `fecha` + `select` rows |
-   | `formulario/` | `formulario` |
-   | `boton/` | `boton` + `correr_script`, with stdout rendered |
-   | `tablero/` | a read-only summary with a chart |
+Deleted:
 
-   `trick-creator` copies one into `app/` and edits it. The "I just want a
-   checklist" request stays a one-step request; it now produces files the
-   author can then change without waiting for a new primitive, which is the
-   entire point.
-4. **Then delete the v1 renderer** — `TrickRenderer`, `ListaControl`,
-   `ReadOnlyField`, and the v1 branches of `TrickAction` — along with this
-   section. Two systems that render tricks is exactly the drift this repo
-   keeps writing down as a bug.
+| Gone | Where it lived |
+|---|---|
+| The declarative renderer and its controls | `panel/web/src/tricks/TrickRenderer.tsx`, `controls/ListaControl.tsx`, `controls/ReadOnlyField.tsx`, `controls/ActionButton.tsx` |
+| `lista`, `boton`, `texto`, `checkbox`, `fecha`, `select`, `formulario` as a **vocabulary** | the above, plus every doc sentence describing tricks as a fixed set of primitives |
+| `datos:` and `ui:` manifest fields | `trickManifestSchema` in `panel/server/src/tricks.ts` |
+| The `set` / `crear_nota` / `archivar` action verbs | `trickAccionDefSchema`, same file. Never implemented; they existed so v1 manifests validated |
+| `tipo: "app" \| "legacy"` and the compatibility path | `TrickManifest`, `TrickSummary`, `GET /api/tricks`, and the frontend types mirroring them |
+| The v1 CSS block | `panel/web/src/styles.css` (`.trick-section`, `.trick-field-*`, `.trick-lista`, `.trick-action`, `.trick-run-*`) |
+| `useRunTrickAction` | `panel/web/src/api/queries.ts` — the browser-side caller of `/run`, which only the `boton` control used |
+
+A v1 manifest now fails **the way any invalid manifest fails**: it has no
+`app:` block, so it is skipped from the listing with a logged reason and
+404s on the detail route (§4.1). There is no second renderer for it to
+reach. Two systems that render tricks is exactly the drift this repo keeps
+writing down as a bug.
+
+Deliberately kept, because neither is v1-specific:
+
+- **`correr_script` and its four constraints (§11).** It predates the
+  declarative renderer, it is the highest trust boundary in the app, and
+  it is now reached through the bridge as `script.run` (§7.5). Deleting
+  the renderer changed nothing about it. `POST /api/tricks/:name/run` also
+  stays: it is that boundary's HTTP face for a filesystem author or a cron
+  script, and §2.1 already counts it as part of the no-auth baseline. It
+  has no browser-side caller any more.
+- **The dashboard widget system** (`panel/web/src/dashboards/**`).
+  Dashboards share vocabulary *words* with v1 — a `query` widget filters
+  notes the way `control: lista` did, and `ListaControl` imported
+  `applyFilter`/`resolveField` from `dashboards/filter.ts` — but the
+  dependency ran **that** way: the trick control borrowed the dashboard's
+  filter, never the reverse. Dashboards are a separate feature, reached
+  from any note whose frontmatter has a `widgets:` array
+  (`isDashboardFrontmatter`), rendered by `DashboardRenderer`, with their
+  own registry and their own three widget kinds. Nothing under
+  `dashboards/` imported anything under `tricks/`. Deleting the trick
+  controls left it untouched, and `WidgetErrorBoundary` — which the trick
+  route still uses — stays where it is.
+
+Conversion, if a deployment still has a v1 manifest on disk somewhere: the
+base package ships starter apps at
+`vault-template/.claude/tricks/_plantillas/` (`lista/`, `formulario/`,
+`boton/`, `tablero/`), and `trick-creator` copies one into `app/` and edits
+it. The "I just want a checklist" request stays a one-step request; it now
+produces files the author can change without waiting for a new primitive,
+which is the entire point.
 
 ---
 
@@ -1111,17 +1199,64 @@ GET  /api/tricks/pinta/app/..%2f..%2f..%2fserver.mjs                  → 400 pa
   absolute-path script produced **no request at all**; a `blob:` URL has an
   opaque path so nothing resolves against it.
 
+### 10.10 The same attacks, against the real host and the real server
+
+Everything in §10.1–§10.9 was measured against a throwaway prototype.
+**Re-run 2026-08-15 against the shipped code** — `node dist/index.js` over
+a scratch vault holding the four starter apps plus three purpose-built
+hostile ones, driven in Chrome. Same results, so the prototype's findings
+transfer; what is new is that the host under test is `TrickHost.tsx`.
+
+Working, from the browser, end to end:
+
+| Trick | What was verified |
+|---|---|
+| `boton` | pressed its button → `script.run` → `execFile` ran `ejemplo.sh` → stdout and `exit code 0` rendered in the frame → `estado.set` wrote `.claude/tricks/boton/data/estado.json` to disk. A round trip through the bridge to a real file, and code execution, from a frame with `connect-src 'none'` |
+| `tablero` | `vault.query` over a real folder, hand-drawn SVG chart, no capability but that one |
+| `lista` | mounted, queried, rendered; a note added on disk while it was open appeared **without a reload** (`datos.cambiaron`) |
+| `visual` (no `capacidades`) | no hello, no port, canvas still works — §4.1 honoured literally |
+| a v1 manifest (`datos:`/`ui:`/`archivar`) | absent from `GET /api/tricks`, 404 on the detail route, one log line: `trick skipped: invalid manifest … expected object … path: ["app"]` |
+
+The hostile app, declaring `estado` and nothing else, reported **BLOCKED
+on every attempt**: `window.origin === "null"`; `parent.document`,
+`top.document`, `localStorage`, `sessionStorage`, `document.cookie`,
+`indexedDB.open()` and `caches` all `SecurityError`;
+`window.frameElement === null`; `fetch("/api/notes")`, `fetch` of its own
+asset, a `no-cors` POST to its own bridge route and a synchronous XHR all
+failed before leaving the browser; `sendBeacon`, a remote `<img>`,
+`WebSocket` and `EventSource` produced no request; a form `.submit()` to
+`/api/note` sent nothing (no `allow-forms`); `top.location` threw; 
+`window.open` returned `null`.
+
+And against the host specifically:
+
+| Attack | Result |
+|---|---|
+| `vault.write`, `script.run` — undeclared | `capability_denied`, and both appeared in the panel's refusal list outside the frame |
+| `vault.delete` — not in the vocabulary | `unsupported_op`, not `capability_denied` |
+| `estado.set` with `trick: "lista"` added to the body | **evaluated as `hostil`**: the value landed in `.claude/tricks/hostil/data/estado.json`, and `lista`'s data folder was never touched. Port identity wins; the body field is not read |
+| `window.parent.postMessage({op:"estado.set", trick:"lista"})` | seen, logged, discarded — no answer, no effect |
+| four malformed envelopes (no `v`, `v:99`, no `id`, object `id`) | all four dropped with a logged reason, none answered |
+| 84 ops in one burst against 32-in-flight / 20-per-second-burst-40 | 64 reached the server across ~1.2 s in one run and 84→refused-25+ in another; the rest got `too_many_requests` locally, and the panel showed a running count |
+| a frame that navigates itself into another trick's app | **two independent refusals.** The host saw the second `load`, handed over no port, removed the iframe and rendered "this trick navigated away from its app". The server's `Sec-Fetch` gate had already 403'd the navigation itself (`dest=iframe site=cross-site`), so the target document never loaded either. The target app, which declares `script.run` that the navigator does not, confirmed from its own side that no hello ever arrived |
+| opening `…/api/tricks/hostil/app/` top-level in the tab | `403 {"error":"a trick app cannot be opened as a page"}` |
+
+`observed:` the panel's own `index.html` is served with the §5.4 policy
+including `frame-src 'self'`, and every app file with the full §5.3 policy
+plus `nosniff`, `no-store` and `Access-Control-Allow-Origin: *` — checked
+with `curl -D-` against the running server.
+
 ---
 
 ## 11. `correr_script` — four constraints now, not three
 
-Unchanged in kind from v1. Reproduced in full because it is the highest
-boundary in the app and the v2 bridge reaches it (§7.5).
+Older than the deleted renderer and untouched by its removal. Reproduced
+in full because it is the highest boundary in the app and the bridge
+reaches it (§7.5).
 
 ```yaml
 acciones:
   - etiqueta: "Generar cierre de este mes"
-    control: boton
     accion:
       correr_script:
         ruta: ".claude/tricks/cierre-financiero-mensual/generar.sh"
@@ -1234,7 +1369,7 @@ one new route group in `index.ts`.
 - `app:` and `capacidades:` in the manifest schema and its validation (§4.1)
 - `GET /api/tricks/:name/app/*` with the path resolution, the `Sec-Fetch-*`
   gate and the exact headers (§5.3)
-- `tipo: "app" | "legacy"` on the `GET /api/tricks` summary
+- the `capacidades` keys and `alto` on the `GET /api/tricks` summary
 - The panel's own CSP header, including `frame-src 'self'` (§5.4)
 - *Testable entirely with `curl`; needs no frontend. Ship it first — every
   other piece is easier to build against a real endpoint.*
@@ -1267,10 +1402,13 @@ a test per endpoint whose name says *why*. Partly done by the attachments
 work; confirm rather than assume.
 
 **6. Freshness and retirement (after 1–4).**
-- `datos.cambiaron` polling and the `tema` event (§8)
+- `datos.cambiaron` polling and the `tema` event (§8) — **done**, in the
+  host (seam 2) rather than as a separate pass, because both are things
+  the host sends down the port it already owns
 - `trabajo.estado` (§7.6), sharing a parser with the jobs view
-  (`docs/roadmap.md` §10)
-- then delete the v1 renderer and §9
+  (`docs/roadmap.md` §10) — **still open.** The bridge answers
+  `unsupported_op`
+- delete the v1 renderer — **done**, see §9
 
 **The seam that must not move:** §6 (the envelope, port identity, one port
 per mount) and §7 (capability names and scope semantics). Seams 2 and 3
@@ -1312,3 +1450,40 @@ renegotiated locally.
   bounds what a document can *read*, never what it can *send*.**
 - **Nothing enumerates which tricks exist to a scheduled job**; a job that
   wants a trick's data reads the files, like everything else.
+- **`vault.query` and `vault.read` return vault-relative paths;
+  `vault.read` and `vault.write` accept `carpeta`-relative ones.** Found
+  2026-08-15 driving the real `lista` starter: it fed a note's `path`
+  straight from a query result into `vault.write`, as §6.8 decision 5
+  invites ("read→edit→write needs no translation"), and the server joined
+  it onto `carpeta` again. Measured on the real server:
+  ```
+  vault.query           → notes[0].path = ".claude/tricks/lista/data/ejemplo.md"
+  vault.write {path: that}                 → capability_denied "may not create new files"
+  vault.write {path: "ejemplo.md"}         → ok
+  formulario (crear:true), same mistake    → CREATED
+      .claude/tricks/formulario/data/.claude/tricks/formulario/data/nueva.md
+  ```
+  **Not a scope escape** — the doubled path is still under `carpeta`, and
+  `relInside` still refuses anything that climbs out — but it is a
+  correctness bug that silently breaks the write path of two of the four
+  shipped starters, and under `crear: true` it silently creates garbage
+  instead of failing. Fixing it belongs in one place, not three: either
+  the server accepts a path that already starts with `carpeta`, or the
+  ops' result shape returns a `carpeta`-relative path. The host must
+  **not** patch it — §6.8 says the host relays the envelope rather than
+  translating it, and a path rewriter in the courier is exactly the kind
+  of second opinion that makes a scope check unverifiable.
+- **The freshness event is verified, its pause is verified, and the two
+  were verified separately.** Chrome driven by automation reports
+  `document.visibilityState === "hidden"` for the tab, which is precisely
+  when §8 says the poll must not run — confirmed by exactly one
+  `/api/notes` request for the whole session. `datos.cambiaron` end to end
+  was then confirmed by temporarily removing that guard, watching a new
+  note appear in a mounted `lista` with no reload, and putting the guard
+  back. `assumed:` the two compose, i.e. a visible tab polls every 5 s in
+  ordinary use.
+- **Only Chrome, and only through automation.** No manual pass, no
+  Firefox, no Safari, and pointer clicks could not be delivered into the
+  sandboxed frame by the automation harness — every in-frame interaction
+  above was driven by keyboard focus instead, which exercises the same
+  event handlers but is not the same as a mouse.

@@ -1713,3 +1713,139 @@ the shipped file. Anyone testing a trick in a browser will hit this.
 - **Card ordering is by kind, not by cost of being wrong.** A
   contradiction about a date somebody is about to act on and one about a
   finished project sort the same.
+---
+
+## [2026-08-15] Tricks v2 host built, and v1 deleted rather than deprecated
+
+Seam 2 of `panel/docs/tricks-spec.md` §13 — the frontend host that mounts
+a trick's app and holds its capability port — plus the retirement the
+spec's §9 had scheduled for "one release later". The owner's call:
+*"We do need to remove that legacy trick. Let's not try to support the old
+versions of the tricks, that is legacy stuff."* The one real v1 trick on
+the one real deployment had already been deleted, so nothing in the world
+depended on v1 and the compatibility window bought nothing but a second
+renderer to maintain.
+
+### The host
+
+`panel/web/src/tricks/TrickHost.tsx`, with the decidable parts split into
+`panel/web/src/tricks/protocol.ts` so they can be tested without a
+browser. `<iframe sandbox="allow-scripts">`, never `allow-same-origin`;
+`port1` kept, `port2` transferred on the **first** `load` event only; a
+second `load` closes the port, removes the iframe and says so. The trick's
+name is a closure variable and a URL segment — nothing reads `event.origin`
+(it is the string `"null"` for every opaque-origin document) and nothing
+reads a `trick` field in a message body. `POST /api/tricks/:name/bridge` is
+issued from the panel's real origin because the frame cannot reach it at
+all (`connect-src 'none'`, plus the server's cross-site guard); that is the
+design, not a workaround.
+
+Also built here rather than deferred to seam 6, because both are things the
+host sends down a port it already owns: `datos.cambiaron` polling every 5 s
+while the document is visible, and the `tema` event.
+
+### What the deletion actually removed
+
+`TrickRenderer`, `ListaControl`, `ReadOnlyField`, `ActionButton`; the
+`datos:`/`ui:` manifest fields; the `set`/`crear_nota`/`archivar` action
+verbs (never implemented — they existed so v1 manifests validated); the
+`tipo: "app" | "legacy"` discriminator and the compatibility path in
+`tricks.ts`; the v1 CSS; `useRunTrickAction`. `app:` is now **required**,
+so a v1 manifest fails the way every other invalid manifest fails —
+skipped from the listing with a logged reason, 404 on the detail route.
+Verified against a full v1 manifest on the real server: one log line,
+`expected object … path: ["app"]`.
+
+Two things deliberately survived, and both were read before anything was
+cut:
+
+- **`correr_script` and its four constraints.** Older than the renderer,
+  reached through the bridge now as `script.run`. `POST /api/tricks/:name/run`
+  stays too — it is that boundary's HTTP face for a filesystem author or a
+  cron script, and spec §2.1 already counts it in the no-auth baseline. It
+  simply has no browser-side caller any more.
+- **The dashboard widget system.** It shares vocabulary *words* with v1
+  and nothing else. The dependency ran the other way: `ListaControl`
+  imported `applyFilter`/`resolveField` from `dashboards/filter.ts`, never
+  the reverse, and nothing under `dashboards/` imports anything under
+  `tricks/`. Dashboards are reached from any note with a `widgets:` array,
+  through their own registry and renderer. Deleting the trick controls
+  left them untouched.
+
+### Attacked, against the real server and the real host
+
+A scratch vault with the four starter apps copied in, plus a hostile
+trick declaring only `estado`, a self-navigating trick, its target, a
+capability-less one and a v1 manifest. Full table in spec §10.10. The
+short version: `parent.document`, `top.document`, `localStorage`,
+`sessionStorage`, cookies, IndexedDB and Cache all `SecurityError`;
+`frameElement` `null`; every network attempt — `fetch`, XHR, `sendBeacon`,
+remote `<img>`, WebSocket, EventSource, a form POST, a `no-cors` POST to
+its own bridge route — blocked before leaving the browser; top navigation
+and `window.open` refused.
+
+Three results worth naming:
+
+**A message claiming another trick is evaluated as its actual sender.**
+The hostile app sent `estado.set` with `trick: "lista"` in the body. It
+landed in `.claude/tricks/hostil/data/estado.json`; `lista`'s data folder
+was never touched. A window-level `postMessage` carrying an op was seen,
+logged and discarded.
+
+**A frame that navigates itself gets refused twice.** The host saw the
+second `load`, handed over no port and unmounted the frame; the server's
+`Sec-Fetch` gate had already 403'd the navigation (`dest=iframe
+site=cross-site`), so the target document never loaded either. The target
+declares `script.run`, which the navigator does not, and confirmed from
+its own side that no hello arrived.
+
+**`capability_denied` is legible, next to the trick.** Undeclared
+`vault.write` and `script.run`, an op outside the vocabulary
+(`unsupported_op`, not `capability_denied`), four malformed envelopes
+dropped with reasons, and a rate-limit refusal with a running count — all
+in the panel's chrome outside the iframe, with a line naming `trick.yaml`.
+
+### One real bug found, in someone else's seam, deliberately not fixed here
+
+**`vault.query`/`vault.read` return vault-relative paths;
+`vault.read`/`vault.write` accept `carpeta`-relative ones.** Found by
+pressing a checkbox in the shipped `lista` starter, which feeds a query
+result's `path` straight into `vault.write` exactly as spec §6.8 decision 5
+invites. The server joins it onto `carpeta` again:
+
+```
+vault.query          → notes[0].path = ".claude/tricks/lista/data/ejemplo.md"
+vault.write {path: that}          → capability_denied "may not create new files"
+vault.write {path: "ejemplo.md"}  → ok
+formulario (crear:true), same mistake → CREATED
+    .claude/tricks/formulario/data/.claude/tricks/formulario/data/nueva.md
+```
+
+Not a scope escape — the doubled path is still under `carpeta` — but it
+silently breaks the write path of two of the four shipped starters, and
+under `crear: true` it creates garbage instead of failing. Left for the
+server/authoring seams because the fix belongs in one place and the host
+is explicitly a courier: §6.8 says it relays the envelope rather than
+translating it, and a path rewriter in the courier is the kind of second
+opinion that makes a scope check unverifiable. Recorded in spec §14.
+
+### Left undone, and what could not be verified
+
+- **`trabajo.estado` still answers `unsupported_op`.** Unchanged; it wants
+  the jobs-view parser.
+- **`datos.cambiaron` and its pause were verified separately, not
+  together.** Chrome under automation reports the tab as
+  `visibilityState: "hidden"`, which is exactly when §8 says the poll must
+  stop — confirmed by exactly one `/api/notes` request for a whole
+  session. The event itself was then confirmed by temporarily removing
+  that guard, watching a note written on disk appear in a mounted trick
+  with no reload, and putting the guard back. `assumed:` the two compose.
+- **Pointer clicks could not be delivered into the sandboxed frame** by
+  the automation harness; every in-frame interaction was driven by
+  keyboard focus. Same handlers, not the same input path.
+- **Only Chrome, only automated.** No manual pass, no Firefox, no Safari.
+- **The 256 KiB message limit and the 1 MiB `vault.read` ceiling
+  disagree.** A legal read of a 900 KiB file produces an answer the host
+  refuses with `bad_request` naming the limit. The server is the
+  authority and its ceiling is the wider one; recorded rather than
+  silently reconciled.

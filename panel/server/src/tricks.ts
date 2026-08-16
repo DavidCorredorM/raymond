@@ -17,9 +17,20 @@ import { isUnder, trickDataDir } from "./writepath.js";
  * under `app/`, served into an opaque-origin sandbox, plus a
  * `capacidades:` map that is the *complete* list of what its browser-side
  * code may touch. This module owns the manifest schema, the app-file
- * resolution and headers (spec §5.3), and — unchanged from v1 — the
- * `correr_script` boundary (§11). The bridge that spends those
- * capabilities lives in `bridge.ts`.
+ * resolution and headers (spec §5.3), and — predating v1's renderer and
+ * outliving it — the `correr_script` boundary (§11). The bridge that
+ * spends those capabilities lives in `bridge.ts`.
+ *
+ * **There is one kind of trick.** The fixed-vocabulary v1 manifest
+ * (`ui.campos`, `control: lista`, the `set`/`crear_nota`/`archivar`
+ * verbs) and the `tipo: "legacy"` compatibility path were deleted
+ * 2026-08-15: the one real v1 trick on the one real deployment was
+ * removed first, so nothing depended on them. `app:` is therefore
+ * **required**, and a manifest without it is invalid in exactly the way
+ * every other invalid manifest is — skipped from the listing with a
+ * logged reason, 404 on the detail route. Two code paths that render a
+ * trick is the drift this repo keeps writing down as a bug; a second one
+ * kept alive "for one release" is the same bug with a date on it.
  */
 
 export const TRICKS_DIR = ".claude/tricks";
@@ -45,36 +56,36 @@ const correrScriptSchema = z.object({
 });
 
 /**
- * Every other write-action verb the spec documents (`set`/`crear_nota`/
- * `archivar`) is accepted here so a manifest that uses them still passes
- * validation and lists correctly — this pass just doesn't implement
- * *running* them. `.passthrough()` on both levels because the manifest
- * format has more shape (e.g. `formulario`'s `campos`) than this backend
- * needs to understand to do its job: list tricks and run `correr_script`
- * actions safely.
+ * `correr_script` is now the **only** action verb.
+ *
+ * `set`, `crear_nota` and `archivar` used to be accepted here so that a
+ * v1 manifest naming them still validated and listed. They were never
+ * implemented and nothing ran them; they existed for the declarative
+ * renderer that is gone. A v2 app does those things itself, through
+ * `vault.write` on the bridge, so the verbs are deleted rather than left
+ * as a vocabulary a manifest can name and nothing honours.
+ *
+ * `.passthrough()` on both levels stays: `acciones` entries in the
+ * shipped starters carry a leftover `control: boton` key, and a manifest
+ * may reasonably annotate an action with more than this server reads.
+ * Nothing outside `correr_script` is interpreted.
  */
 const trickAccionDefSchema = z
-  .object({
-    correr_script: correrScriptSchema.optional(),
-    set: z.record(z.string(), z.unknown()).optional(),
-    crear_nota: z.unknown().optional(),
-    archivar: z.unknown().optional(),
-  })
+  .object({ correr_script: correrScriptSchema.optional() })
   .passthrough();
 
 const trickAccionSchema = z
   .object({
     etiqueta: z.string().optional(),
-    control: z.string().optional(),
     accion: trickAccionDefSchema.optional(),
   })
   .passthrough();
 
 /**
- * `app:` — present means "this is a v2 app trick" (spec §4.1). Absent
- * means a v1 manifest, which still renders through the legacy renderer
- * for one release (§9). The two fields are the only things the *server*
- * needs: where the entry document is, and how tall the frame should be.
+ * `app:` — **required** (spec §4.1). A trick *is* an app; a manifest
+ * with no `app:` block names no document to mount and is invalid. The
+ * two fields are the only things the *server* needs: where the entry
+ * document is, and how tall the frame should be.
  */
 const appSchema = z
   .object({
@@ -174,10 +185,14 @@ export interface TrickCapabilities {
 }
 
 /**
- * Top-level manifest shape. Only `titulo` is required — a trick can be
- * action-only (a single `correr_script` button) with no app and no
- * capabilities. `datos`/`ui` are v1 fields, validated only as "present or
- * not" here; the legacy renderer owns their deeper shape.
+ * Top-level manifest shape. `titulo` and `app` are required: a trick is
+ * a document the panel mounts, and one with no document to mount is a
+ * manifest that cannot be honoured.
+ *
+ * The v1 `datos:` and `ui:` fields are gone from the schema, so a v1
+ * manifest loses them at parse time and then fails on the missing
+ * `app:` — one failure, one reason, the same as any other invalid
+ * manifest.
  *
  * `capacidades` is parsed as an opaque record and validated by
  * `validateCapabilities` below, which needs the trick's *name* to apply
@@ -188,21 +203,17 @@ const trickManifestSchema = z.object({
   titulo: z.string(),
   descripcion: z.string().optional(),
   icono: z.string().optional(),
-  datos: z.unknown().optional(),
-  ui: z.unknown().optional(),
-  app: appSchema.optional(),
+  app: appSchema,
   capacidades: z.record(z.string(), z.unknown()).nullish(),
   acciones: z.array(trickAccionSchema).optional(),
   programacion: z.unknown().optional(),
 });
 
 export type TrickManifest = Omit<z.infer<typeof trickManifestSchema>, "app" | "capacidades"> & {
-  /** Present iff this is a v2 app trick. Defaults resolved. */
-  app?: { entrada: string; alto: number };
+  /** Always present — `app:` is required. Defaults resolved. */
+  app: { entrada: string; alto: number };
   /** Always present (possibly empty) so consumers never branch on undefined. */
   capacidades: TrickCapabilities;
-  /** `"app"` iff `app:` was declared. Drives which renderer the panel uses. */
-  tipo: "app" | "legacy";
 };
 
 export interface TrickSummary {
@@ -210,9 +221,8 @@ export interface TrickSummary {
   titulo: string;
   descripcion?: string;
   icono?: string;
-  tipo: "app" | "legacy";
-  /** Only for `tipo: "app"` — the frame height the manifest asked for. */
-  alto?: number;
+  /** The frame height the manifest asked for, defaults resolved. */
+  alto: number;
   /** Manifest keys, not ops (spec §6.2). `[]` means the app gets no bridge at all. */
   capacidades: CapabilityKey[];
 }
@@ -424,11 +434,8 @@ export async function readTrickManifest(
   const { app, capacidades, ...rest } = result.data;
   return {
     ...rest,
-    ...(app
-      ? { app: { entrada: validateEntrada(app.entrada), alto: app.alto ?? DEFAULT_ALTO } }
-      : {}),
+    app: { entrada: validateEntrada(app.entrada), alto: app.alto ?? DEFAULT_ALTO },
     capacidades: validateCapabilities(safe, capacidades),
-    tipo: app ? "app" : "legacy",
   };
 }
 
@@ -462,8 +469,7 @@ export async function listTricks(
         titulo: manifest.titulo,
         descripcion: manifest.descripcion,
         icono: manifest.icono,
-        tipo: manifest.tipo,
-        alto: manifest.app?.alto,
+        alto: manifest.app.alto,
         capacidades: Object.keys(manifest.capacidades) as CapabilityKey[],
       });
     } catch (err) {
@@ -774,8 +780,8 @@ export interface RunResult {
  * guaranteeing the request that triggered it can't hang indefinitely
  * (tricks-spec.md: "a hard timeout, killing the process if it runs
  * long"). Revisit per-trick if a real script genuinely needs longer —
- * not exposed as manifest-configurable in v1, so a trick can't quietly
- * ask for an hour.
+ * deliberately not manifest-configurable, so a trick can't quietly ask
+ * for an hour.
  */
 const RUN_TIMEOUT_MS = 5_000;
 
