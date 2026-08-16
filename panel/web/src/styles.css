@@ -580,74 +580,6 @@ a {
   line-height: 1.6;
 }
 
-.trick-section {
-  margin-top: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.trick-field-readonly {
-  font-size: 0.9rem;
-}
-
-.trick-field-label {
-  font-weight: 600;
-}
-
-.trick-lista {
-  overflow-x: auto;
-}
-
-.trick-action {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 14px 16px;
-}
-
-.trick-run-result {
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px solid var(--border);
-}
-
-.trick-run-status {
-  font-weight: 600;
-  margin: 0 0 6px;
-}
-
-.trick-run-ok .trick-run-status {
-  color: #2f9e44;
-}
-
-.trick-run-fail .trick-run-status,
-.trick-run-timeout .trick-run-status {
-  color: var(--broken);
-}
-
-.trick-run-label {
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  margin: 8px 0 4px;
-}
-
-.trick-run-output {
-  background: var(--code-bg);
-  padding: 10px 12px;
-  border-radius: 6px;
-  overflow-x: auto;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.85rem;
-  white-space: pre-wrap;
-  word-break: break-word;
-  margin: 0;
-}
-
-.trick-run-stderr {
-  color: var(--broken);
-}
-
 /* ---------------------------------------------------------------------
    Attachments — non-.md vault files in the tree, folder-scoped upload,
    and the /vault/file/* preview (roadmap #9). Appended as one block on
@@ -1112,4 +1044,116 @@ a {
 .note-tree-ext[data-kind="audio"],
 .note-tree-ext[data-kind="video"] {
   color: #0c8599;
+}
+
+/* ---------------------------------------------------------------------
+   Tricks v2 — the host (TrickHost.tsx, tricks-spec.md §6). Appended as
+   one block on purpose: this file is edited by several agents at once
+   and reflowing the rules above would be a guaranteed conflict. The v1
+   renderer's rules (.trick-section, .trick-field-*, .trick-lista,
+   .trick-action, .trick-run-*) were deleted from the middle of the file
+   along with the four components that used them.
+
+   The chrome around the frame is a mitigation, not decoration: a trick
+   can draw a convincing fake inside its own rectangle, so the name, the
+   label and the capability list live outside the iframe where its code
+   cannot reach them, and the frame never fills the viewport (§2.4).
+   --------------------------------------------------------------------- */
+
+.trick-host {
+  margin-top: 20px;
+}
+
+.trick-host-chrome {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 0 2px 6px;
+}
+
+.trick-host-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--fg-muted);
+}
+
+.trick-host-caps {
+  font-size: 0.78rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* A plain rectangle with a visible edge: where the panel stops and the
+   app starts should never be a judgement call. */
+.trick-host-frame {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.trick-host-gone {
+  border: 1px dashed var(--broken);
+  border-radius: 8px;
+  padding: 18px 20px;
+}
+
+.trick-host-gone p {
+  margin: 0 0 6px;
+}
+
+.trick-host-note {
+  font-size: 0.85rem;
+  margin: 10px 2px 0;
+}
+
+/* A refused call is shown, never swallowed — an author debugging their
+   own app has to be able to see that they forgot a declaration (§6.5). */
+.trick-host-problems {
+  margin-top: 14px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--broken);
+  border-radius: 6px;
+  padding: 10px 14px;
+}
+
+.trick-host-problems-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  margin-bottom: 6px;
+}
+
+.trick-host-problems-head button {
+  margin-left: auto;
+}
+
+.trick-host-problems ul {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+
+.trick-problem-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  color: var(--broken);
+}
+
+.trick-problem-dropped .trick-problem-code {
+  color: var(--fg-muted);
+}
+
+.trick-card-caps {
+  margin-top: 6px;
+  font-size: 0.72rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }

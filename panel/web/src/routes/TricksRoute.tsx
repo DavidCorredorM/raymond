@@ -2,10 +2,14 @@ import { Link } from "react-router-dom";
 import { useTricks } from "../api/queries";
 
 /**
- * Real data from `GET /api/tricks` (tricks-spec.md) — replaces the
- * earlier placeholder that only derived trick *names* from indexed
- * `SKILL.md` paths. Clicking a card navigates to `TrickDetailRoute`,
- * which renders the manifest's `ui`/`acciones`.
+ * Real data from `GET /api/tricks` (tricks-spec.md). Clicking a card
+ * navigates to `TrickDetailRoute`, which mounts the trick's app in a
+ * sandboxed frame.
+ *
+ * Only valid manifests are listed. A trick whose `trick.yaml` fails to
+ * parse or validate — including one still written in the deleted v1
+ * shape, which has no `app:` block — is skipped by the server with a
+ * logged reason rather than appearing here as something half-rendered.
  */
 export function TricksRoute() {
   const { data: tricks, isLoading, isError, error } = useTricks();
@@ -30,9 +34,11 @@ export function TricksRoute() {
       <div className="tricks-empty page-scroll">
         <h1>Tricks</h1>
         <p>
-          A trick is a small interactive mini-app — a todo list, a habit
-          tracker, a simple form — backed by a Claude Code skill. This vault
-          doesn&apos;t have any yet.
+          A trick is a small web app that runs over this vault — a checklist, a form, a
+          chart, a drawing pad, a button that runs a script. Arbitrary HTML, CSS and
+          JavaScript in a sandboxed frame with no network of its own, reaching the vault
+          only through the capabilities its manifest declares. This vault doesn&apos;t have
+          any yet.
         </p>
         <p>
           Tricks aren&apos;t built by hand: open Claude Code in this vault
@@ -58,6 +64,14 @@ export function TricksRoute() {
             <div className="trick-card-body">
               <div className="trick-card-title">{t.titulo}</div>
               {t.descripcion && <div className="trick-card-desc muted">{t.descripcion}</div>}
+              {/* What it may touch, before you open it. `capacidades`
+                  constrains the browser, not the machine — a scheduled
+                  job feeding the same trick is not limited by this
+                  (spec §8) — but it is the whole of what the app can
+                  reach, and it belongs where someone will read it. */}
+              <div className="trick-card-caps muted">
+                {t.capacidades.length ? t.capacidades.join(" · ") : "no capabilities"}
+              </div>
             </div>
           </Link>
         ))}

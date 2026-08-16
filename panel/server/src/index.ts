@@ -618,10 +618,14 @@ app.get("/api/tricks", async () =>
 );
 
 /**
- * The full manifest for one trick — `datos`, `ui`, `acciones` — so the
- * frontend can render it. 404 for both "no such trick" and "trick.yaml
- * doesn't parse/validate": from the client's perspective there is
- * nothing renderable at that name either way.
+ * The full manifest for one trick — `app`, `capacidades`, `acciones` —
+ * so the panel's host knows what to mount, how tall, and which
+ * capability keys go in the hello message. 404 for both "no such trick"
+ * and "trick.yaml doesn't parse/validate": from the client's
+ * perspective there is nothing mountable at that name either way, and
+ * that now includes a v1 manifest, which fails on the missing `app:`
+ * like any other invalid manifest rather than reaching a second
+ * renderer.
  */
 app.get<{ Params: { name: string } }>("/api/tricks/:name", async (req, reply) => {
   try {
@@ -720,11 +724,12 @@ app.get<{ Params: { name: string; "*": string } }>(
     try {
       manifest = await readTrickManifest(cfg.vaultDir, req.params.name);
     } catch (err) {
-      const status = err instanceof TrickError ? (err.statusCode === 404 ? 404 : 404) : 500;
+      // "no such trick" and "the manifest is invalid" are the same
+      // answer from here: there is nothing mountable at that name, and
+      // saying which would let anything on the tailnet enumerate broken
+      // manifests. The *reason* is logged by the listing route.
+      const status = err instanceof TrickError ? 404 : 500;
       return reply.code(status).send({ error: "no such trick app" });
-    }
-    if (!manifest.app) {
-      return reply.code(404).send({ error: "this trick declares no app" });
     }
 
     let file: { full: string; rel: string };

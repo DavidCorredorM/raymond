@@ -7,7 +7,6 @@ import type {
   NoteDetail,
   NoteSummary,
   TrickManifest,
-  TrickRunResult,
   TrickSummary,
   VaultHealth,
 } from "./types";
@@ -118,30 +117,24 @@ export function useTricks() {
   });
 }
 
+/**
+ * One trick's manifest — what the host needs to mount it: the frame
+ * height and the capability keys that go in the hello message.
+ *
+ * There is no `useRunTrickAction` any more. It existed for the deleted
+ * v1 renderer's `boton` control, which was the only caller of
+ * `POST /api/tricks/:name/run` from the browser. A v2 app runs a script
+ * by sending `script.run` over its bridge port, where the index must
+ * *also* be listed in the manifest's `script.run.acciones` — declaring an
+ * action and exposing it to browser code are two separate decisions
+ * (spec §7.5). The `/run` endpoint itself stays: it is the
+ * `correr_script` boundary's HTTP face for a filesystem author or a cron
+ * script, and spec §2.1 counts it as part of the no-auth baseline.
+ */
 export function useTrick(name: string | undefined) {
   return useQuery({
     queryKey: ["trick", name],
     queryFn: () => fetchJSON<TrickManifest>(`/api/tricks/${encodeURIComponent(name!)}`),
     enabled: !!name,
-  });
-}
-
-/**
- * Runs one pre-declared action by index — the client never sends what
- * the action does (`ruta`/`args`), only which index to run; the server
- * reads those from its own copy of trick.yaml (tricks.ts). Not a
- * TanStack Query cache-invalidating mutation like `useSaveNote`: running
- * a script doesn't change note data the app already caches (unless the
- * script itself writes a vault file, which the filesystem watcher picks
- * up on its own next poll).
- */
-export function useRunTrickAction(name: string) {
-  return useMutation({
-    mutationFn: (actionIndex: number) =>
-      fetchJSON<TrickRunResult>(`/api/tricks/${encodeURIComponent(name)}/run`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ actionIndex }),
-      }),
   });
 }
