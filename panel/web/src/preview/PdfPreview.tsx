@@ -1,5 +1,7 @@
 import { NoPreview } from "./NoPreview";
 import { PreviewFrame } from "./PreviewFrame";
+import { useT } from "../i18n/store";
+import { interpolate } from "../i18n/interpolate";
 
 /**
  * PDFs render in the browser's own viewer, framed.
@@ -42,38 +44,36 @@ export function PdfPreview({
   // "download PDFs instead of opening them" on. Undefined on browsers that
   // don't implement it — assume a viewer there and let the fallback content
   // inside the frame handle being wrong, rather than refusing to try.
+  const t = useT();
   const viewerEnabled = navigator.pdfViewerEnabled ?? true;
 
   if (!viewerEnabled) {
     return (
-      <NoPreview
-        name={name}
-        size={size}
-        downloadHref={downloadHref}
-        reason="This browser is set to download PDFs rather than display them, so there's no viewer to embed."
-      />
+      <NoPreview name={name} size={size} downloadHref={downloadHref} reason={t.preview.pdfViewerDisabled} />
     );
   }
 
   return (
     <PreviewFrame
       flush
-      status="Browser PDF viewer"
+      status={t.preview.browserPdfViewerStatus}
       actions={
         <>
           <a className="preview-button" href={src} target="_blank" rel="noopener noreferrer">
-            Open in new tab
+            {t.preview.openInNewTab}
           </a>
           <a className="preview-button" href={downloadHref}>
-            Download
+            {t.common.download}
           </a>
         </>
       }
     >
-      <iframe className="preview-frame" src={src} title={`PDF preview of ${name}`}>
+      <iframe className="preview-frame" src={src} title={t.preview.pdfPreviewOfName(name)}>
         {/* Shown only by a browser that can't frame a PDF at all. */}
         <p className="muted">
-          This browser can't display PDFs inline. <a href={downloadHref}>Download {name}</a>.
+          {interpolate(t.preview.cantDisplayPdfTemplate, {
+            download: <a href={downloadHref}>{t.preview.downloadLinkText(name)}</a>,
+          })}
         </p>
       </iframe>
     </PreviewFrame>

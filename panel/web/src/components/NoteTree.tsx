@@ -12,6 +12,7 @@ import {
 } from "../lib/vaultTree";
 import { FolderUpload } from "./FolderUpload";
 import { Icon } from "../icons/Icon";
+import { useT } from "../i18n/store";
 
 function FolderView({
   node,
@@ -116,6 +117,7 @@ export function NoteTree({
   /** Show skills/templates/tooling alongside the user's own notes. Off by default. */
   showSystem: boolean;
 }) {
+  const t = useT();
   // Everything starts folded: a real vault is 27 folders deep in places,
   // and an all-open tree is a wall of text you have to read before you can
   // navigate it. Opening a folder is one click; closing twenty is not.
@@ -134,14 +136,14 @@ export function NoteTree({
   }
 
   if (visibleNotes.length === 0 && visibleFiles.length === 0) {
-    return <p className="note-tree-empty">No notes match.</p>;
+    return <p className="note-tree-empty">{t.noteTree.noMatch}</p>;
   }
   return (
     <>
       {/* Root is a real destination too — a file dropped here lands at the
           top of the vault, same as any other folder row. */}
-      <FolderUpload folder="" label="the vault root">
-        <span className="note-tree-root-label">Vault root</span>
+      <FolderUpload folder="" label={t.noteTree.vaultRootLower}>
+        <span className="note-tree-root-label">{t.noteTree.vaultRoot}</span>
       </FolderUpload>
       <FolderView node={tree} depth={0} expanded={expanded} toggle={toggle} />
     </>

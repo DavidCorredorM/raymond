@@ -6,6 +6,8 @@ import { stripFrontmatter } from "../lib/frontmatter";
 import { buildSlugIndex } from "../lib/slugIndex";
 import { HOME_DASHBOARD_PATH } from "../lib/config";
 import { DashboardRenderer, isDashboardFrontmatter } from "../dashboards/DashboardRenderer";
+import { useT } from "../i18n/store";
+import { interpolate } from "../i18n/interpolate";
 
 /**
  * Reads whatever dashboard file is configured as home — today a fixed
@@ -17,9 +19,10 @@ export function HomeRoute() {
   const noteQuery = useNote(HOME_DASHBOARD_PATH);
   const notesQuery = useNotes();
   const slugIndex = useMemo(() => buildSlugIndex(notesQuery.data ?? []), [notesQuery.data]);
+  const t = useT();
 
   if (noteQuery.isLoading) {
-    return <p className="muted page-scroll">Loading…</p>;
+    return <p className="muted page-scroll">{t.common.loading}</p>;
   }
 
   if (noteQuery.isError || !noteQuery.data) {
@@ -27,11 +30,12 @@ export function HomeRoute() {
       <div className="home-empty page-scroll">
         <h1>Raymond</h1>
         <p>
-          No dashboard yet at <code>{HOME_DASHBOARD_PATH}</code>. Create a note
-          there with a <code>widgets:</code> frontmatter array to make this
-          your home page — see the widget spec in{" "}
-          <code>panel/docs/frontend-implementation-plan.md</code> §5, or start
-          browsing the <Link to="/vault">vault</Link>.
+          {interpolate(t.home.noDashboardTemplate, {
+            path: <code>{HOME_DASHBOARD_PATH}</code>,
+            widgetsField: <code>widgets:</code>,
+            specPath: <code>panel/docs/frontend-implementation-plan.md</code>,
+            vaultLink: <Link to="/vault">{t.home.vaultLinkText}</Link>,
+          })}
         </p>
       </div>
     );
@@ -47,8 +51,10 @@ export function HomeRoute() {
         <DashboardRenderer widgets={note.frontmatter.widgets} notes={notesQuery.data ?? []} />
       ) : (
         <p className="muted">
-          <code>{HOME_DASHBOARD_PATH}</code> exists but has no <code>widgets:</code> array, so
-          nothing renders below — add one to turn it into a dashboard.
+          {interpolate(t.home.noWidgetsTemplate, {
+            path: <code>{HOME_DASHBOARD_PATH}</code>,
+            widgetsField: <code>widgets:</code>,
+          })}
         </p>
       )}
     </div>

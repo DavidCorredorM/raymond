@@ -6,6 +6,7 @@ import { NoPreview } from "./NoPreview";
 import { PreviewFrame } from "./PreviewFrame";
 import { previewLanguageOf, type PreviewLanguage } from "../lib/preview";
 import { TooLargeError, useAttachmentText } from "./useAttachmentText";
+import { useT } from "../i18n/store";
 
 /**
  * Read-only source view, CodeMirror 6 — the same editor the note editor
@@ -52,6 +53,7 @@ export function TextViewer({
   language?: PreviewLanguage;
   actions?: ReactNode;
 }) {
+  const t = useT();
   const { data, isLoading, isError, error } = useAttachmentText(path);
   const langId = language !== undefined ? language : previewLanguageOf(ext);
   const [langExt, setLangExt] = useState<Extension | null>(null);
@@ -80,7 +82,7 @@ export function TextViewer({
     [langExt],
   );
 
-  if (isLoading) return <p className="muted preview-loading">Reading {name}…</p>;
+  if (isLoading) return <p className="muted preview-loading">{t.common.reading(name)}</p>;
   if (isError) {
     const err = error as Error;
     return (
@@ -90,8 +92,8 @@ export function TextViewer({
         downloadHref={downloadHref}
         reason={
           err instanceof TooLargeError
-            ? `Too large to show as text — ${err.message}.`
-            : `Couldn't read this file: ${err.message}.`
+            ? t.preview.tooLargeAsText(err.message)
+            : t.preview.couldntRead(err.message)
         }
       />
     );
@@ -103,12 +105,12 @@ export function TextViewer({
   return (
     <PreviewFrame
       flush
-      status={`${lines.toLocaleString()} line${lines === 1 ? "" : "s"}${langId ? ` · ${langId}` : ""}`}
+      status={`${t.preview.lines(lines)}${langId ? ` · ${langId}` : ""}`}
       actions={
         <>
           {actions}
           <a className="preview-button" href={downloadHref}>
-            Download
+            {t.common.download}
           </a>
         </>
       }

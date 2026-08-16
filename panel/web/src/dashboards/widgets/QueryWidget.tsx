@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import type { NoteSummary } from "../../api/types";
 import { applyFilter, resolveField } from "../filter";
 import { noteHref } from "../../lib/notePath";
+import { useT } from "../../i18n/store";
 
 /**
  * Owns its own params schema (plan §6.7) — a malformed `params` object
@@ -34,12 +35,13 @@ function renderCell(note: NoteSummary, field: string) {
 }
 
 export function QueryWidget({ params, notes }: { params: unknown; notes: NoteSummary[] }) {
+  const t = useT();
   const p = paramsSchema.parse(params);
   const rows = applyFilter(notes, p);
   const columns = p.columns?.length ? p.columns : ["title", "path"];
 
   if (rows.length === 0) {
-    return <p className="muted">No matching notes.</p>;
+    return <p className="muted">{t.widgetQuery.noMatches}</p>;
   }
 
   return (

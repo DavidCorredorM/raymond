@@ -1,6 +1,7 @@
 import { useState, type SyntheticEvent } from "react";
 import { NoPreview } from "./NoPreview";
 import { PreviewFrame } from "./PreviewFrame";
+import { useT } from "../i18n/store";
 
 /**
  * Audio and video, native elements with native controls.
@@ -31,6 +32,7 @@ export function MediaPreview({
   size?: number;
   downloadHref: string;
 }) {
+  const t = useT();
   const [failure, setFailure] = useState<string | null>(null);
 
   if (failure) {
@@ -41,27 +43,27 @@ export function MediaPreview({
     const code = e.currentTarget.error?.code;
     setFailure(
       code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED
-        ? "This browser can't decode this file's codec or container. Download it and open it in a media player."
-        : "Playback failed — the file may be truncated or the connection dropped.",
+        ? t.preview.codecUnsupported
+        : t.preview.playbackFailed,
     );
   };
 
   const actions = (
     <a className="preview-button" href={downloadHref}>
-      Download
+      {t.common.download}
     </a>
   );
 
   if (kind === "audio") {
     return (
-      <PreviewFrame status="Audio" actions={actions}>
+      <PreviewFrame status={t.preview.audioStatus} actions={actions}>
         <audio className="preview-audio" src={src} controls preload="metadata" onError={onError} />
       </PreviewFrame>
     );
   }
 
   return (
-    <PreviewFrame flush status="Video" actions={actions}>
+    <PreviewFrame flush status={t.preview.videoStatus} actions={actions}>
       <video
         className="preview-video"
         src={src}

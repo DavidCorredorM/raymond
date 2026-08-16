@@ -1,4 +1,5 @@
 import { formatBytes } from "../lib/attachments";
+import { useT } from "../i18n/store";
 
 /**
  * Where every path that can't render ends up: an unknown type, a decode
@@ -22,6 +23,7 @@ export function NoPreview({
   size?: number;
   downloadHref: string;
 }) {
+  const t = useT();
   return (
     <div className="preview-empty">
       <p className="preview-empty-name">{name}</p>
@@ -30,7 +32,7 @@ export function NoPreview({
         {typeof size === "number" && Number.isFinite(size) ? ` · ${formatBytes(size)}` : ""}
       </p>
       <a className="preview-button preview-button-primary" href={downloadHref}>
-        Download
+        {t.common.download}
       </a>
     </div>
   );

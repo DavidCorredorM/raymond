@@ -19,6 +19,7 @@ import {
   type ResizeBounds,
 } from "../lib/resizable";
 import { Icon } from "../icons/Icon";
+import { useT } from "../i18n/store";
 
 /**
  * A panel with a draggable divider — the sidebar and the backlinks panel
@@ -55,6 +56,7 @@ export function ResizablePanel({
   ariaLabel: string;
   children: ReactNode;
 }) {
+  const t = useT();
   const direction = side === "start" ? 1 : -1;
   const bounds: ResizeBounds = { min, max, collapseThreshold };
   const widthKey = `${storageKey}:width`;
@@ -194,7 +196,9 @@ export function ResizablePanel({
       onPointerDown={onPointerDown}
       onKeyDown={onKeyDown}
       onDoubleClick={onDoubleClick}
-      title={collapsed ? "Drag or press Enter to open" : "Drag to resize, double-click to fold"}
+      title={
+        collapsed ? t.resizablePanel.dragOrEnterToOpen : t.resizablePanel.dragToResizeDoubleClickFold
+      }
     >
       <span className="resize-handle-grip">
         <Icon name="grip" size={12} />

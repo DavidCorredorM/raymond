@@ -11,6 +11,8 @@ import { ImagePreview } from "./ImagePreview";
 import { MediaPreview } from "./MediaPreview";
 import { NoPreview } from "./NoPreview";
 import { PdfPreview } from "./PdfPreview";
+import { useT } from "../i18n/store";
+import type { Messages } from "../i18n/messages";
 
 /**
  * Everything the browser can render on its own — images, PDF, HTML, audio,
@@ -41,21 +43,22 @@ const TableViewer = lazy(() => import("./TableViewer").then((m) => ({ default: m
  * live advisories in front of files that scheduled agents write, in an app
  * with no auth (README rule 3), is a worse outcome than a download button.
  */
-const NO_READER: Record<string, string> = {
-  xlsx: "Spreadsheets have no preview yet — download it to open in Excel or Numbers.",
-  xls: "Spreadsheets have no preview yet — download it to open in Excel or Numbers.",
-  ods: "Spreadsheets have no preview yet — download it to open in a spreadsheet app.",
-  docx: "Word documents have no preview yet — download it to open in Word or Pages.",
-  doc: "Word documents have no preview yet — download it to open in Word or Pages.",
-  odt: "Text documents have no preview yet — download it to open in a word processor.",
-  pptx: "PowerPoint has no preview yet — download it to open in PowerPoint or Keynote.",
-  ppt: "PowerPoint has no preview yet — download it to open in PowerPoint or Keynote.",
-  odp: "Presentations have no preview yet — download it to open in a presentation app.",
-  zip: "Archives aren't unpacked in the browser — download it to open it.",
-  gz: "Archives aren't unpacked in the browser — download it to open it.",
-  tgz: "Archives aren't unpacked in the browser — download it to open it.",
-  "7z": "Archives aren't unpacked in the browser — download it to open it.",
-  rar: "Archives aren't unpacked in the browser — download it to open it.",
+/** Maps an extension to the `Messages.preview` key holding its no-reader wording. */
+const NO_READER_KEY: Record<string, keyof Messages["preview"]> = {
+  xlsx: "noReaderSpreadsheetOffice",
+  xls: "noReaderSpreadsheetOffice",
+  ods: "noReaderSpreadsheetOds",
+  docx: "noReaderWordOffice",
+  doc: "noReaderWordOffice",
+  odt: "noReaderTextOdt",
+  pptx: "noReaderPowerpointOffice",
+  ppt: "noReaderPowerpointOffice",
+  odp: "noReaderPresentationOdp",
+  zip: "noReaderArchive",
+  gz: "noReaderArchive",
+  tgz: "noReaderArchive",
+  "7z": "noReaderArchive",
+  rar: "noReaderArchive",
 };
 
 export function AttachmentPreview({
@@ -70,6 +73,7 @@ export function AttachmentPreview({
   /** From the attachment index; undefined when the file isn't in it. */
   size?: number;
 }) {
+  const t = useT();
   const src = attachmentUrl(path);
   const downloadHref = attachmentDownloadUrl(path);
   const kind: PreviewKind = previewKindOf(path, ext);
@@ -83,7 +87,7 @@ export function AttachmentPreview({
         name={name}
         size={size}
         downloadHref={downloadHref}
-        reason={`Too large to preview in the browser — this reads the whole file into the tab, and the limit is ${formatBytes(TEXT_PREVIEW_LIMIT_BYTES)}.`}
+        reason={t.preview.tooLargeToPreview(formatBytes(TEXT_PREVIEW_LIMIT_BYTES))}
       />
     );
   }
@@ -117,27 +121,24 @@ export function AttachmentPreview({
       );
     case "table":
       return (
-        <Suspense fallback={<p className="muted preview-loading">Loading table view…</p>}>
+        <Suspense fallback={<p className="muted preview-loading">{t.common.loadingTableView}</p>}>
           <TableViewer path={path} name={name} ext={ext} size={size} downloadHref={downloadHref} />
         </Suspense>
       );
     case "text":
       return (
-        <Suspense fallback={<p className="muted preview-loading">Loading text view…</p>}>
+        <Suspense fallback={<p className="muted preview-loading">{t.common.loadingTextView}</p>}>
           <TextViewer path={path} name={name} ext={ext} size={size} downloadHref={downloadHref} />
         </Suspense>
       );
-    case "none":
-      return (
-        <NoPreview
-          name={name}
-          size={size}
-          downloadHref={downloadHref}
-          reason={
-            NO_READER[ext] ??
-            `There's no preview for ${ext ? `.${ext}` : "files without an extension"} — download it to open it in whatever app owns it.`
-          }
-        />
-      );
+    case "none": {
+      const readerKey = NO_READER_KEY[ext];
+      const reason = readerKey
+        ? (t.preview[readerKey] as string)
+        : ext
+          ? t.preview.noPreviewFor(ext)
+          : t.preview.noPreviewForNoExtension;
+      return <NoPreview name={name} size={size} downloadHref={downloadHref} reason={reason} />;
+    }
   }
 }

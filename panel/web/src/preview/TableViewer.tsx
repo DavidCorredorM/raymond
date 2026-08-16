@@ -4,6 +4,7 @@ import { PreviewFrame } from "./PreviewFrame";
 import { delimiterFor, parseDelimited } from "../lib/csv";
 import { TABLE_PREVIEW_MAX_ROWS } from "../lib/preview";
 import { TooLargeError, useAttachmentText } from "./useAttachmentText";
+import { useT } from "../i18n/store";
 
 /**
  * CSV and TSV as an actual table. Lazy-loaded, but kept out of TextViewer's
@@ -30,6 +31,7 @@ export function TableViewer({
   size?: number;
   downloadHref: string;
 }) {
+  const t = useT();
   const { data, isLoading, isError, error } = useAttachmentText(path);
   const [raw, setRaw] = useState(false);
   const table = useMemo(
@@ -37,7 +39,7 @@ export function TableViewer({
     [data, ext],
   );
 
-  if (isLoading) return <p className="muted preview-loading">Reading {name}…</p>;
+  if (isLoading) return <p className="muted preview-loading">{t.common.reading(name)}</p>;
   if (isError) {
     const err = error as Error;
     return (
@@ -47,27 +49,24 @@ export function TableViewer({
         downloadHref={downloadHref}
         reason={
           err instanceof TooLargeError
-            ? `Too large to show as a table — ${err.message}.`
-            : `Couldn't read this file: ${err.message}.`
+            ? t.preview.tooLargeAsTable(err.message)
+            : t.preview.couldntRead(err.message)
         }
       />
     );
   }
   if (!table) {
-    return (
-      <NoPreview
-        name={name}
-        size={size}
-        downloadHref={downloadHref}
-        reason="This file is empty."
-      />
-    );
+    return <NoPreview name={name} size={size} downloadHref={downloadHref} reason={t.preview.emptyFile} />;
   }
 
   const truncated = table.totalRows > table.rows.length;
   const status = truncated
-    ? `${table.rows.length.toLocaleString()} of ${table.totalRows.toLocaleString()} rows · ${table.columns} columns`
-    : `${table.totalRows.toLocaleString()} row${table.totalRows === 1 ? "" : "s"} · ${table.columns} columns`;
+    ? t.preview.rowsStatusTruncated(
+        table.rows.length.toLocaleString(),
+        table.totalRows.toLocaleString(),
+        table.columns,
+      )
+    : t.preview.rowsStatus(table.totalRows, table.totalRows.toLocaleString(), table.columns);
 
   return (
     <PreviewFrame
@@ -81,10 +80,10 @@ export function TableViewer({
             onClick={() => setRaw((v) => !v)}
             aria-pressed={raw}
           >
-            {raw ? "Table" : "Raw text"}
+            {raw ? t.preview.table : t.preview.rawText}
           </button>
           <a className="preview-button" href={downloadHref}>
-            Download
+            {t.common.download}
           </a>
         </>
       }
@@ -121,8 +120,10 @@ export function TableViewer({
           </table>
           {truncated && (
             <p className="muted preview-table-note">
-              Showing the first {table.rows.length.toLocaleString()} of{" "}
-              {table.totalRows.toLocaleString()} rows. Download the file to see all of it.
+              {t.preview.showingFirstRows(
+                table.rows.length.toLocaleString(),
+                table.totalRows.toLocaleString(),
+              )}
             </p>
           )}
         </div>

@@ -4,6 +4,7 @@ import { WidgetErrorBoundary } from "../dashboards/WidgetErrorBoundary";
 import { TrickHost } from "../tricks/TrickHost";
 import { Icon } from "../icons/Icon";
 import { TrickIcon } from "../icons/TrickIcon";
+import { useT } from "../i18n/store";
 
 /**
  * One trick: the panel's own chrome, and the app mounted inside it.
@@ -22,27 +23,25 @@ import { TrickIcon } from "../icons/TrickIcon";
  * does not exist, and the listing route logs why it was skipped.
  */
 export function TrickDetailRoute() {
+  const t = useT();
   const { name } = useParams();
   const trickQuery = useTrick(name);
 
   if (!name) {
-    return <p className="muted page-scroll">No trick selected.</p>;
+    return <p className="muted page-scroll">{t.trickDetail.noneSelected}</p>;
   }
   // `isPending`, not `isLoading` — see the note in NoteRoute.tsx. With
   // `trickQuery.data!` below, the difference is a crash during a retry
   // backoff rather than a loading message.
   if (trickQuery.isPending) {
-    return <p className="muted page-scroll">Loading…</p>;
+    return <p className="muted page-scroll">{t.trickDetail.loading}</p>;
   }
   if (trickQuery.isError) {
     return (
       <div className="note-error page-scroll">
-        <p>Could not load trick &ldquo;{name}&rdquo;.</p>
+        <p>{t.trickDetail.couldNotLoad(name)}</p>
         <p className="muted">{(trickQuery.error as Error).message}</p>
-        <p className="muted">
-          A trick whose <code>trick.yaml</code> fails validation is skipped rather than
-          half-rendered; the panel&apos;s log says which rule it broke.
-        </p>
+        <p className="muted">{t.trickDetail.skippedNote}</p>
       </div>
     );
   }
@@ -53,7 +52,8 @@ export function TrickDetailRoute() {
     <div className="trick-detail page-scroll">
       <p>
         <Link to="/tricks" className="back-link">
-          <Icon name="chevron-right" size={14} style={{ transform: "rotate(180deg)" }} /> Tricks
+          <Icon name="chevron-right" size={14} style={{ transform: "rotate(180deg)" }} />{" "}
+          {t.trickDetail.backToTricks}
         </Link>
       </p>
       <h1 className="trick-detail-title">

@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import { AppShell } from "./routes/AppShell";
@@ -10,6 +10,8 @@ import { HealthRoute } from "./routes/HealthRoute";
 import { HomeRoute } from "./routes/HomeRoute";
 import { TricksRoute } from "./routes/TricksRoute";
 import { TrickDetailRoute } from "./routes/TrickDetailRoute";
+import { useHealth } from "./api/queries";
+import { useI18nStore } from "./i18n/store";
 
 // react-force-graph-2d pulls in d3-force and pushes the main bundle past
 // the 500kB warning threshold on its own; it's also only needed on one
@@ -66,9 +68,27 @@ const router = createBrowserRouter([
   },
 ]);
 
+/**
+ * Reads `GET /api/health`'s `language` field into the i18n store
+ * (i18n/store.ts) on boot and on every poll — not just once, so a second
+ * browser tab open on the same panel picks up a language change made from
+ * Settings in the first tab without needing a manual reload. Renders
+ * nothing; `useHealth` already drives the rest of the app's "is the
+ * server up" signal, this just also listens to one field of it.
+ */
+function LanguageSync() {
+  const { data } = useHealth();
+  const setLanguage = useI18nStore((s) => s.setLanguage);
+  useEffect(() => {
+    if (data?.language) setLanguage(data.language);
+  }, [data?.language, setLanguage]);
+  return null;
+}
+
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
+      <LanguageSync />
       <RouterProvider router={router} />
     </QueryClientProvider>
   );

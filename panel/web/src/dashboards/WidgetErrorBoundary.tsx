@@ -1,4 +1,5 @@
 import { Component, type ReactNode } from "react";
+import { currentMessages } from "../i18n/store";
 
 interface Props {
   children: ReactNode;
@@ -16,6 +17,10 @@ interface State {
  * parses its own `params` with zod and throws on a bad shape; this
  * boundary is what turns that throw into an inline error instead of
  * taking down every other widget on the page.
+ *
+ * A class component, so it reads `currentMessages()` directly (i18n/store.ts)
+ * rather than `useT()` — error boundaries can't be hooks, `getDerivedStateFromError`
+ * has no component instance to call one from.
  */
 export class WidgetErrorBoundary extends Component<Props, State> {
   state: State = { error: null };
@@ -26,7 +31,7 @@ export class WidgetErrorBoundary extends Component<Props, State> {
 
   render() {
     if (this.state.error) {
-      return <p className="widget-error">Widget failed to render: {this.state.error.message}</p>;
+      return <p className="widget-error">{currentMessages().dashboard.widgetFailed(this.state.error.message)}</p>;
     }
     return this.props.children;
   }

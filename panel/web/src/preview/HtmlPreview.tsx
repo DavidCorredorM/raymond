@@ -1,5 +1,6 @@
 import { lazy, Suspense, useState } from "react";
 import { PreviewFrame } from "./PreviewFrame";
+import { useT } from "../i18n/store";
 
 // The source view is CodeMirror, i.e. the heaviest thing in the build. It is
 // a toggle most people never press, so it stays behind a dynamic import even
@@ -47,6 +48,7 @@ export function HtmlPreview({
   size?: number;
   downloadHref: string;
 }) {
+  const t = useT();
   const [showSource, setShowSource] = useState(false);
 
   const sourceToggle = (
@@ -56,13 +58,13 @@ export function HtmlPreview({
       onClick={() => setShowSource((v) => !v)}
       aria-pressed={showSource}
     >
-      {showSource ? "Rendered" : "Source"}
+      {showSource ? t.preview.rendered : t.preview.source}
     </button>
   );
 
   if (showSource) {
     return (
-      <Suspense fallback={<p className="muted preview-loading">Loading source view…</p>}>
+      <Suspense fallback={<p className="muted preview-loading">{t.common.loadingSourceView}</p>}>
         <TextViewer
           path={path}
           name={name}
@@ -79,7 +81,7 @@ export function HtmlPreview({
   return (
     <PreviewFrame
       flush
-      status="Sandboxed — scripts run, the page can't reach the panel"
+      status={t.preview.sandboxedStatus}
       actions={
         <>
           {sourceToggle}
@@ -87,10 +89,10 @@ export function HtmlPreview({
               header; without it this link would hand a generated page the
               panel's own origin. */}
           <a className="preview-button" href={src} target="_blank" rel="noopener noreferrer">
-            Open in new tab
+            {t.preview.openInNewTab}
           </a>
           <a className="preview-button" href={downloadHref}>
-            Download
+            {t.common.download}
           </a>
         </>
       }
@@ -98,7 +100,7 @@ export function HtmlPreview({
       <iframe
         className="preview-frame"
         src={src}
-        title={`Preview of ${name}`}
+        title={t.preview.previewOfName(name)}
         sandbox="allow-scripts"
         referrerPolicy="no-referrer"
       />

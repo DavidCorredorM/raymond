@@ -4,6 +4,7 @@ import { useAttachments, useNotes } from "../api/queries";
 import { NoteTree } from "../components/NoteTree";
 import { SearchBox, filterAttachments, filterNotes } from "../components/SearchBox";
 import { ResizablePanel } from "../components/ResizablePanel";
+import { useT } from "../i18n/store";
 
 function subnavClass({ isActive }: { isActive: boolean }): string {
   return "vault-subnav-link" + (isActive ? " active" : "");
@@ -16,6 +17,7 @@ function subnavClass({ isActive }: { isActive: boolean }): string {
  * nav item").
  */
 export function VaultShell() {
+  const t = useT();
   const { data: notes, isLoading, isError, error } = useNotes();
   // Attachments are a second, independent index (roadmap #9). Its failure is
   // non-fatal on purpose: an older panel server with no /api/attachments
@@ -42,32 +44,29 @@ export function VaultShell() {
         defaultWidth={300}
         min={220}
         max={560}
-        ariaLabel="Resize the note list"
+        ariaLabel={t.vaultShell.resizeNoteList}
       >
         <aside className="sidebar">
           <nav className="vault-subnav">
             <NavLink to="/vault" end className={subnavClass}>
-              Notes
+              {t.vaultSubnav.notes}
             </NavLink>
             <NavLink to="/vault/graph" className={subnavClass}>
-              Graph
+              {t.vaultSubnav.graph}
             </NavLink>
             <NavLink to="/vault/health" className={subnavClass}>
-              Health
+              {t.vaultSubnav.health}
             </NavLink>
           </nav>
           <SearchBox value={query} onChange={setQuery} />
           <nav className="note-tree">
-            {isLoading && <p className="muted">Loading notes…</p>}
+            {isLoading && <p className="muted">{t.vaultShell.loadingNotes}</p>}
             {isError && <p className="note-error">{(error as Error).message}</p>}
             {notes && (
               <NoteTree notes={filtered} attachments={filteredFiles} showSystem={showSystem} />
             )}
             {attachmentsQuery.isError && (
-              <p className="muted attachment-index-error">
-                Files other than notes aren't listed — the panel server didn't answer
-                /api/attachments.
-              </p>
+              <p className="muted attachment-index-error">{t.vaultShell.attachmentIndexError}</p>
             )}
           </nav>
           {systemCount > 0 && (
@@ -77,7 +76,7 @@ export function VaultShell() {
                 checked={showSystem}
                 onChange={(e) => setShowSystem(e.target.checked)}
               />
-              Show {systemCount} system file{systemCount === 1 ? "" : "s"}
+              {t.vaultShell.systemFilesToggle(systemCount)}
             </label>
           )}
         </aside>

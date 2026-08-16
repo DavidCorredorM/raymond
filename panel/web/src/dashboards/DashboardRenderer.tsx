@@ -1,6 +1,7 @@
 import type { NoteSummary } from "../api/types";
 import { WIDGET_REGISTRY } from "./widgets/registry";
 import { WidgetErrorBoundary } from "./WidgetErrorBoundary";
+import { useT } from "../i18n/store";
 
 interface RawWidget {
   kind?: unknown;
@@ -28,17 +29,18 @@ export function DashboardRenderer({
   widgets: unknown;
   notes: NoteSummary[];
 }) {
+  const t = useT();
   const list = Array.isArray(widgets) ? (widgets as RawWidget[]) : [];
 
   if (list.length === 0) {
-    return <p className="muted">This dashboard has no widgets configured.</p>;
+    return <p className="muted">{t.dashboard.noWidgets}</p>;
   }
 
   return (
     <div className="dashboard-grid">
       {list.map((w, i) => {
         const kind = typeof w.kind === "string" ? w.kind : undefined;
-        const title = typeof w.title === "string" ? w.title : "Untitled widget";
+        const title = typeof w.title === "string" ? w.title : t.dashboard.untitledWidget;
         const Widget = kind ? WIDGET_REGISTRY[kind] : undefined;
         return (
           <div className="dashboard-widget" key={`${kind ?? "unknown"}-${i}`}>
@@ -47,7 +49,7 @@ export function DashboardRenderer({
               {Widget ? (
                 <Widget params={w.params ?? {}} notes={notes} />
               ) : (
-                <p className="widget-error">Unknown widget kind: {kind ?? "(missing)"}</p>
+                <p className="widget-error">{t.dashboard.unknownWidgetKind(kind ?? "(missing)")}</p>
               )}
             </WidgetErrorBoundary>
           </div>

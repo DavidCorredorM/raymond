@@ -4,6 +4,7 @@
  * stay on `toLocaleDateString()`/`toLocaleString()` like the rest of the app
  * (QueryWidget.tsx, NoteRoute.tsx) instead of growing a second convention.
  */
+import { currentMessages } from "../i18n/store";
 
 /** Enforced server-side; repeated here only to write an actionable message. */
 export const UPLOAD_LIMIT_MB = 25;
@@ -138,24 +139,34 @@ export function formatBytes(bytes: number): string {
  * Upload failures the user can act on. 409 is handled as a question before
  * it ever reaches here (see FolderUpload.tsx); this is the wording if that
  * flow is ever bypassed, plus the cases that are genuinely dead ends.
+ *
+ * A plain function, not a component, so it can't call `useT()` — reads
+ * `currentMessages()` (i18n/store.ts) instead, which is the same store a
+ * hook would read, just outside React. No `language` parameter: every
+ * caller in this app wants "whatever the panel is showing right now", and
+ * threading it through FolderUpload's whole call chain for a value that's
+ * already global state would just be prop-drilling the store's own job.
  */
 export function describeUploadError(
   status: number,
   fileName: string,
   serverMessage?: string,
 ): string {
+  const t = currentMessages().folderUpload;
   switch (status) {
     case 0:
-      return `Couldn't reach the panel server while uploading ${fileName}. Check the connection and try again.`;
+      return t.couldNotReach(fileName);
     case 409:
-      return `${fileName} already exists in this folder.`;
+      return t.alreadyExists(fileName);
     case 413:
-      return `${fileName} is over the ${UPLOAD_LIMIT_MB} MB upload limit. Put it somewhere else and link to it, or split it up.`;
+      return t.overLimit(fileName, UPLOAD_LIMIT_MB);
     case 400:
-      return `The server rejected ${fileName}${serverMessage ? `: ${serverMessage}` : " (bad request)"}. Renaming the file usually fixes this.`;
+      return serverMessage ? t.rejected(fileName, serverMessage) : t.rejectedNoDetail(fileName);
     case 404:
-      return `This panel's server has no upload endpoint (${fileName} was not sent). It needs the attachments backend deployed.`;
+      return t.noUploadEndpoint(fileName);
     default:
-      return `Upload of ${fileName} failed (${status})${serverMessage ? `: ${serverMessage}` : ""}.`;
+      return serverMessage
+        ? t.uploadFailedStatusDetail(fileName, status, serverMessage)
+        : t.uploadFailedStatus(fileName, status);
   }
 }

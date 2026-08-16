@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { NoPreview } from "./NoPreview";
 import { PreviewFrame } from "./PreviewFrame";
+import { useT } from "../i18n/store";
 
 /**
  * Raster images and SVG, both through `<img>`.
@@ -28,18 +29,14 @@ export function ImagePreview({
   size?: number;
   downloadHref: string;
 }) {
+  const t = useT();
   const [failed, setFailed] = useState(false);
   const [actualSize, setActualSize] = useState(false);
   const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
 
   if (failed) {
     return (
-      <NoPreview
-        name={name}
-        size={size}
-        downloadHref={downloadHref}
-        reason="The browser could not decode this image — it may be truncated, or in a format this browser doesn't support."
-      />
+      <NoPreview name={name} size={size} downloadHref={downloadHref} reason={t.preview.imageDecodeFailed} />
     );
   }
 
@@ -61,10 +58,10 @@ export function ImagePreview({
             onClick={() => setActualSize((v) => !v)}
             aria-pressed={actualSize}
           >
-            {actualSize ? "Fit" : "Actual size"}
+            {actualSize ? t.preview.fit : t.preview.actualSize}
           </button>
           <a className="preview-button" href={downloadHref}>
-            Download
+            {t.common.download}
           </a>
         </>
       }

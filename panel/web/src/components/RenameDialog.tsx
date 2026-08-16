@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Icon } from "../icons/Icon";
 import type { RenameInputResult } from "../lib/rename";
+import { useT } from "../i18n/store";
 
 /**
  * Owner's ask #4 ("rename is a correctness problem, not a UI feature")
@@ -36,6 +37,7 @@ export function RenameDialog({
   busy: boolean;
   serverError: string | null;
 }) {
+  const t = useT();
   const [value, setValue] = useState(initialValue);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -68,7 +70,7 @@ export function RenameDialog({
             <h2 id="rename-dialog-title">{title}</h2>
           </div>
           <label className="dialog-label" htmlFor="rename-dialog-input">
-            New name
+            {t.renameDialog.newName}
           </label>
           <input
             id="rename-dialog-input"
@@ -86,10 +88,10 @@ export function RenameDialog({
           {serverError && <p className="dialog-error">{serverError}</p>}
           <div className="dialog-actions">
             <button type="button" className="mode-toggle" onClick={onClose} disabled={busy}>
-              Cancel
+              {t.renameDialog.cancel}
             </button>
             <button type="submit" className="save-button" disabled={busy || !result.path}>
-              {busy ? "Renaming…" : "Rename"}
+              {busy ? t.renameDialog.renaming : t.renameDialog.rename}
             </button>
           </div>
         </form>
