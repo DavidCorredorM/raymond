@@ -95,6 +95,17 @@ export function ResizablePanel({
       // Right-click / middle-click shouldn't start a resize.
       if (e.button !== 0) return;
       e.preventDefault();
+      // `preventDefault()` on pointerdown is what stops the browser's own
+      // drag/text-selection gesture — necessary for the drag itself — but
+      // it also suppresses the browser's *default* click-to-focus
+      // behaviour as a side effect. Verified in a real browser: without
+      // this line, `document.activeElement` stayed `<body>` after
+      // clicking the divider, so a plain click-then-Enter (the documented
+      // fold/restore gesture) silently did nothing. `currentTarget`, not
+      // `target` — a pointerdown on the grip icon inside the divider
+      // targets that `<span>`/`<svg>`, neither of which is focusable;
+      // `currentTarget` is always the element this handler is bound to.
+      (e.currentTarget as HTMLElement).focus();
       dragRef.current = { startX: e.clientX, startWidth: collapsed ? 0 : width };
       setDragging(true);
       (e.target as Element).setPointerCapture(e.pointerId);
