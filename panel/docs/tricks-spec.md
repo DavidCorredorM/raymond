@@ -327,7 +327,8 @@ So:
 ```
 dest ∈ {iframe, frame}      → require site == "same-origin", else 403
 dest == "document"          → 403
-dest absent                 → 403
+dest absent                 → §5.5 fallback (mount token), not an
+                               unconditional 403 — see below
 otherwise (subresource)     → serve; do NOT check Sec-Fetch-Site
 ```
 
@@ -338,10 +339,11 @@ loads, and because the 403 body is JSON with `nosniff`, the symptom is
 "my scripts are fetched but never execute," which cost real time to
 diagnose during this design (§10.6). Leave the comment in the code.
 
-`dest absent → 403` makes this fail closed for clients that do not send
-`Sec-Fetch-*` (curl, and browsers older than roughly 2023). A trick app
-that does not render is the correct failure; a trick app served to an
-unidentifiable client is not.
+`dest absent` used to mean an unconditional 403 — fail closed for clients
+that do not send `Sec-Fetch-*` (curl, and browsers older than roughly
+2023). That was correct as far as it went, but "browsers older than
+roughly 2023" turned out not to be a hypothetical: §5.5 is what changed
+when it showed up on the one real deployment.
 
 **Response headers**, on every file served from `app/`:
 
@@ -432,6 +434,140 @@ to `http://example.com/pwned` produced no network request (§10.6).
 > an inline bootstrap needs a nonce, not `'unsafe-inline'`. This is served
 > as a response header by `@fastify/static`'s `setHeaders`, on `.html`
 > only — a CSP on a `.js` response governs nothing.
+
+---
+
+### 5.5 The fallback for a browser that sends no `Sec-Fetch-*` at all
+
+**Found live, 2026-08-15**, on the one real deployment: `vault-steward`
+failed to open with `appRequestGate`'s own refusal message —
+"trick apps are only served to browsers that send Sec-Fetch-Dest; they
+are mounted in the panel, not fetched directly" — logged with `dest:null,
+site:null`, over a genuine Tailscale MagicDNS address. Not a dev
+artifact: a real device on Angela's tailnet, consistent with an older
+Safari (full Fetch Metadata support landed in Safari 16.4, March 2023),
+an iOS in-app browser/WebView, or a locked-down corporate browser — all
+real cases for a non-technical customer, none of them curl.
+
+`dest absent → 403` (§5.3) is the right rule for the signal it has. The
+gap is that it has no fallback, so a browser like this one cannot use
+tricks at all. The constraint that makes a fallback hard: the gate exists
+to stop exactly one thing — a top-level sandboxed document navigating
+itself, the redirector §10.6 measured before the gate existed
+(`CSP: sandbox` does not stop a top-level document navigating its own
+window). Whatever replaces the missing signal must not let that back in.
+And it has to cover **every** request the mount makes — entrada and every
+subresource — because a browser that sends no `Sec-Fetch-Dest` sends none
+of them on *any* request, not only the first.
+
+**Why not a cookie.** The obvious shape: set one, let the browser attach
+it to every following request for free. Measured against a real sandboxed
+iframe in real Chrome (a throwaway harness, not in this repo) before
+writing any server code:
+
+- `SameSite=Lax` and `SameSite=Strict` cookies, set by a same-origin
+  top-level request, were attached **zero times** to a request made from
+  *inside* `<iframe sandbox="allow-scripts">` (no `allow-same-origin`)
+  for a resource on that same real origin — not to an `<img src>`, not to
+  a `fetch`. The browser's same-site check for a subresource request
+  walks the frame's ancestor chain, and a sandboxed frame's *origin* is
+  opaque by design (§5.1) — the check fails there regardless of the
+  *URL* being requested being same-origin.
+- Only `SameSite=None` reached the server at all, and inconsistently:
+  the `<img>` request carried it, a same-context `fetch()` did not
+  (`fetch`'s default `credentials: "same-origin"` matches nothing from an
+  opaque origin). `SameSite=None` also requires `Secure`, which requires
+  HTTPS — which this deployment does not have (`panel/deploy/README.md`:
+  no auth, the tailnet is the perimeter, plain HTTP). The one cookie
+  variant that partially worked cannot be set on the real server at all.
+
+So a cookie cannot reliably reach a trick's subresource requests on this
+deployment. Nothing in the mechanism below reads or sets one.
+
+**Why not a plain GET-minted credential.** Even if delivery worked, `GET`
+is CORS-simple: any page open in *any other tab* could trigger a `GET`
+side effect with no preflight to refuse — the same shape §10.3 already
+found for a "simple" `POST`. A cross-site page silently priming a
+fallback credential ahead of a later attack would be worse than having no
+fallback. The credential has to come from a request only the panel's own
+same-origin JS can make, which is exactly what the cross-site guard at
+the top of `index.ts` already exists to enforce for every other mutating
+endpoint — reused here rather than invented a second time.
+
+**The mechanism.** `POST /api/tricks/:name/mount` mints a single-use,
+per-trick token, guarded by nothing but the existing cross-site guard.
+That guard's `Sec-Fetch-Site` half is unavailable for exactly the
+browsers this exists for, but its `Origin` half is not: `Origin` on a
+`POST` predates Fetch Metadata by roughly a decade and has been sent by
+every mainstream browser, including old Safari, for all of that time.
+Verified (§10.11) against the real guard: a forged `Origin` refused with
+no `Sec-Fetch-Site` present at all, the same code path a modern
+cross-origin attacker hits.
+
+The panel mints a token immediately before setting an iframe's `src`,
+**for every mount, regardless of browser** — page script cannot read
+`Sec-Fetch-*`, so there is no way to feature-detect which path a given
+browser will need and skip minting when it turns out not to. The token
+rides in the query string (`?_m=<token>`): the one request it's issued
+for (the entrada) can carry it because the panel builds that URL itself;
+no subsequent subresource request can, because `<link href="style.css">`
+resolves with no query string to append one to, and rewriting the app's
+HTML to inject one everywhere was already rejected for `srcdoc` in §5.2
+for the identical reason — it cannot reach a URL a script builds at
+runtime, and "no constraints on the app's code" is the point of this
+whole design.
+
+So the token authenticates the entrada exactly once
+(`consumeMountToken`), and success opens a short, **per-trick-name**
+window (`openWindows`, 20s) that subsequent subresource requests for
+that trick are checked against instead of a token they cannot carry.
+
+**Residual risk, worked through rather than hidden.** During that window,
+*any* dest-absent `GET` for that trick's subresource paths is served —
+there is no per-request credential left to check once the entrada's
+single-use token is spent, only the trick's name and a clock. If that
+window covered `.html` (or anything else a browser can render and run
+script in as a full top-level document — `.svg`, `.xml`), a raw top-level
+open of *that* path during the window would be exactly the redirector
+this gate exists to prevent, one file over from the one the token
+actually guards. That is closed, not merely accepted:
+
+- `isFallbackSafeExtension` allow-lists ordinary subresource types only
+  (css, js/mjs, json, images, fonts, media, wasm) and refuses everything
+  else by default, the same posture `appContentType` already takes for
+  `Content-Type`. `.html`/`.htm`, `.svg` and `.xml` are excluded
+  specifically because each can carry and run its own script when
+  navigated to directly — the same failure mode as the entrada itself.
+- `frame-src 'none'` in `APP_CSP` means a well-behaved app never needs an
+  `.html` subresource anyway — a trick cannot frame anything, including
+  its own other pages — so the exclusion costs a real app nothing. It
+  does cost old-Safari-class browsers the ability to use `.svg` assets in
+  a trick app (§14): a known, deliberate gap, not an oversight.
+- The entrada check stays single-use even within the window: a second
+  `GET` for the entrada path with the same, now-spent token fails
+  (verified §10.11), so the token cannot be replayed later to open a
+  fresh top-level load — only the one mount it was minted for, once.
+
+**Regression safety.** None of this runs unless `Sec-Fetch-Dest` is
+entirely absent from the request. A browser that sends it — the
+overwhelming majority — hits `appRequestGate` exactly as written in
+§5.3, unchanged; `fallbackAppGate` never runs, and an embedded mount
+token on such a request is inert (verified §10.11: a fresh, valid,
+never-used token embedded in a top-level open still gets refused by the
+`dest == "document"` rule, and remains unspent afterward).
+
+**Endpoint added:**
+
+```
+POST /api/tricks/:name/mount   → { "token": "<hex>" }
+```
+
+No body, no `application/json` requirement — there is nothing to parse,
+and the cross-site guard is the lock, the same posture
+`POST /api/tricks/:name/run` already takes. 404 on a trick that doesn't
+currently validate, masked identically to the app route's own 404 (§5.3)
+for the same reason: not leaking which manifests are broken to the
+tailnet.
 
 ---
 
@@ -1247,6 +1383,111 @@ including `frame-src 'self'`, and every app file with the full §5.3 policy
 plus `nosniff`, `no-store` and `Access-Control-Allow-Origin: *` — checked
 with `curl -D-` against the running server.
 
+### 10.11 The Sec-Fetch fallback (§5.5), attacked
+
+Run 2026-08-15 against the shipped code, `node dist/index.js` over a
+scratch vault holding a real trick (`pinta`: `index.html` + `style.css` +
+`app.js` + `logo.png` + an `other.html` planted specifically to test the
+extension exclusion), Chrome 151 for the browser-driven checks and `curl`
+for everything that needs a client sending genuinely zero `Sec-Fetch-*`
+headers — which, unlike §10.1–§10.10's throwaway harness, `curl` matches
+byte-for-byte: the live bug's own evidence was `dest:null, site:null`,
+headers absent entirely, exactly what `curl` sends.
+
+**A real, unmodified browser is unaffected** (the regression check §5.5
+promises). Loaded `/tricks/pinta` in real Chrome with nothing simulated:
+the entrada request carried `sec-fetch-dest: iframe,
+sec-fetch-site: same-origin`, all three subresources carried
+`sec-fetch-dest: script|style|image, sec-fetch-site: cross-site` — the
+exact §10.6 table — and the trick rendered, its script ran inside the
+opaque origin (`window.origin === "null"`, confirmed from inside the
+frame), and the visible text updated. A mount token was minted and
+embedded in the entrada URL as it is for every browser (§5.5), and was
+never consulted: `appRequestGate` decided the request before
+`fallbackAppGate` would ever run.
+
+**A genuine no-Sec-Fetch client mounts and uses the trick completely,
+through the real mechanism** (`curl`, one flow):
+
+| Step | Result |
+|---|---|
+| `GET .../pinta/app/` — no token, no headers (the base case) | `403`, `"no valid one-time mount token…"` |
+| `POST .../pinta/mount` | `200 {"token":"…"}` — `curl` sends no `Origin`, which the cross-site guard already treats as "not a browser" and allows (index.ts), same as any other non-browser client hitting any other endpoint here |
+| `GET .../pinta/app/?_m=<token>` | `200` — entrada served, token consumed |
+| `GET .../pinta/app/style.css`, `.../app.js`, `.../logo.png` — no token, window only | all `200` |
+| `GET .../pinta/app/?_m=<token>` again | `403` — single-use; the entrada cannot be replayed even seconds later |
+
+**The residual risk (§5.5) reproduced and confirmed closed.** With the
+window from the row above still open:
+
+| Attack | Result |
+|---|---|
+| `GET .../pinta/app/other.html` — planted specifically to be an `other.html`, not the manifest's entrada, sitting in the same `app/` folder | `403 {"error":"this file type is not servable to a browser that sends no Sec-Fetch-Dest"}` — refused **although the window was genuinely open**, which is exactly the scenario that would have reopened the redirector if the extension allowlist did not exist |
+| `GET .../pinta/app/app.js` in the same window, same moment | `200` — an allowed extension still works; the exclusion is extension-specific, not a general lockdown |
+| a **different** trick's `app.js`, no window of its own | `403` — one trick's open window does not leak to another trick's name |
+
+**A cross-site page cannot obtain a credential — verified twice.**
+`curl` with `Sec-Fetch-Site: cross-site` and, separately, a forged
+`Origin: https://evil.example` with no `Sec-Fetch-Site` at all (the shape
+an old-Safari-class *attacker* would produce, to check the guard's
+`Origin` half carries the whole weight when its `Sec-Fetch-Site` half is
+unavailable): both `403`, `"cross-site request refused"` /
+`"cross-origin request refused"`. Then reproduced with an actual
+cross-origin browser, not `curl`: a second HTTP server on a different
+port served a page whose only content was
+`fetch(".../pinta/mount", {method:"POST", mode:"no-cors"})`, loaded in
+real Chrome. The attacker's own page saw an opaque response, as expected
+of `no-cors` — the interesting fact is server-side: the request carried
+`Sec-Fetch-Site: cross-site` (a real cross-origin browser sends it even
+though old Safari-as-victim would not), the guard refused it, and the
+server log confirms no token was minted as a side effect of the refused
+attempt.
+
+**A valid, unused mount token does not help a top-level open, on a
+browser the strict gate can read.** Minted a token and never spent it,
+then `page.goto()`'d a real Chrome tab straight to
+`.../pinta/app/?_m=<token>` — top-level, so `dest=document`. Result:
+`403 {"error":"a trick app cannot be opened as a page"}`, identical to
+the base case with no token at all. The strict gate refuses before the
+token is ever inspected. Confirmed the token was not silently consumed
+by that refusal either: the same token, replayed afterward through
+`curl` with no `Sec-Fetch-*` (the fallback path), still worked —
+`200` — meaning the failed top-level attempt truly never touched
+`consumeMountToken`.
+
+**Base case unchanged, on a real browser.** `page.goto()` to the raw
+entrada URL with no token at all, top-level, real Chrome:
+`403 {"error":"a trick app cannot be opened as a page"}` — byte-identical
+to the message §10.6 already established, because it is the same code
+path, untouched.
+
+**What was not independently re-verified against a real old-Safari
+engine.** `curl` matches the live bug's own header evidence exactly and
+proves the server-side decision is correct for that exact input, but it
+cannot render a page, execute JS, or drive a `postMessage` bridge
+handshake. `assumed:` a genuine pre-16.4 Safari (or an iOS WebView, or a
+locked-down corporate browser sending no `Sec-Fetch-*`), once
+`fallbackAppGate` authorizes a response, renders and executes the bytes
+identically to how real Chrome already renders the *same* bytes when
+`appRequestGate` authorizes them (proven above) — reasonable because the
+fallback changes only *whether* a response is sent, never *what* is sent
+(same file, same `Content-Type`, same `APP_CSP`), and rendering is a
+function of the response, not of which server-side gate approved it —
+but this specific composition was not run against an actual old-Safari
+engine in this session, the same gap §10 already carries for Firefox and
+Safari generally (`assumed: Firefox and Safari behave the same`).
+Attempted and abandoned: stripping `Sec-Fetch-*` from a **real** Chrome
+request via Playwright's `route.continue()` and, when that didn't work,
+via a raw CDP `Fetch.continueRequest` — both leave the header on the wire
+unchanged. Chrome recomputes `Sec-Fetch-*` after either interception
+point, which is itself a small, useful confirmation of the header's own
+threat model: nothing running inside a Chromium-family browser, not even
+DevTools automation, can suppress it.
+
+`observed:` `npm test` (server, 57 cases including 8 new ones for the
+token/window lifecycle) and `npm test` (web, 232 cases, unchanged) both
+pass; `npm run build` is clean in both `panel/server` and `panel/web`.
+
 ---
 
 ## 11. `correr_script` — four constraints now, not three
@@ -1411,6 +1652,15 @@ work; confirm rather than assume.
   `unsupported_op`
 - delete the v1 renderer — **done**, see §9
 
+**7. The Sec-Fetch fallback (§5.5) — done, 2026-08-15**, after the fact,
+in response to a live failure rather than as one of the original six.
+`POST /api/tricks/:name/mount` in `tricks.ts`/`index.ts`, and the token
+now embedded in `TrickHost.tsx`'s iframe `src` for every mount. Touches
+seam 1 (a new route) and seam 2 (the host now mints before it mounts) but
+not seam 3 or 4 — the bridge and authoring surfaces are unaffected, since
+this only decides whether the entrada/subresource `GET`s succeed, never
+what they're allowed to do once mounted.
+
 **The seam that must not move:** §6 (the envelope, port identity, one port
 per mount) and §7 (capability names and scope semantics). Seams 2 and 3
 both implement them and must agree exactly; everything else can be
@@ -1509,3 +1759,22 @@ renegotiated locally.
   sandboxed frame by the automation harness — every in-frame interaction
   above was driven by keyboard focus instead, which exercises the same
   event handlers but is not the same as a mouse.
+- **The §5.5 fallback cannot serve `.svg` assets.** Deliberate, not an
+  oversight (§5.5's residual-risk writeup): the extension allowlist that
+  makes the subresource window safe against a top-level-redirector attack
+  has to exclude anything that can carry and run its own script when
+  navigated to directly, and SVG can. A trick that wants to work for an
+  old-Safari-class visitor needs PNG/JPG/WebP icons, not SVG ones; a
+  modern browser is unaffected since it never touches this path at all.
+- **The §5.5 fallback was not independently re-verified against a real
+  old-Safari engine — same gap as the line above, for the same reason.**
+  `curl` reproduces the live bug's own header shape exactly (`dest:null,
+  site:null`) and proves the server-side decision, and real Chrome proves
+  the *same bytes* render and execute correctly when the *strict* gate
+  authorizes them, but the specific composition — an old-Safari engine
+  rendering bytes the *fallback* gate authorized — was not run. Two
+  attempts at forcing a real Chrome request to genuinely omit
+  `Sec-Fetch-*` (Playwright route interception, then a raw CDP
+  `Fetch.continueRequest`) both failed: Chrome re-adds the header after
+  either interception point, which cannot be worked around from inside a
+  Chromium-family browser at all — see §10.11.
