@@ -1,6 +1,7 @@
 import { lstat, realpath } from "node:fs/promises";
 import { dirname, resolve, sep } from "node:path";
 import { safeRelPath, resolveInVault } from "./vault.js";
+import { assertNetworkWritable, WritePathError } from "./writepath.js";
 
 /**
  * Attachments — the non-`.md` half of the vault (roadmap #9): serving
@@ -118,12 +119,37 @@ const INLINE_TYPES: Record<string, string> = {
  * `allow-same-origin` must never appear here. Combined with
  * `allow-scripts` it hands the document back its real origin and the
  * sandbox becomes decoration.
+ *
+ * **`connect-src 'none'` was added 2026-08-15 after measuring its
+ * absence**, while implementing the trick-app serving route next door.
+ * An opaque origin stops a document reading *this* origin; it does
+ * nothing about the document reaching the network. Verified in Chrome
+ * against a real server: an uploaded `report.html` served by this route
+ * issued `fetch("/api/note?path=…", {mode:"no-cors"})` and **the request
+ * arrived**. The response was unreadable (no `Access-Control-Allow-Origin`
+ * on data routes) and a mutating one would have been refused by the
+ * cross-site guard in `index.ts`, so nothing was read or written — but
+ * "talking to the outside world" is its own escalation in
+ * `tricks-spec.md` §2.1, and an HTML report that can `fetch()` can beacon
+ * to any host the viewer's browser can reach, and can scan the LAN.
+ *
+ * `connect-src 'none'` is exactly what the trick-app policy uses for the
+ * same reason (§5.3), and it is the whole of the fix: only `fetch`, XHR,
+ * `sendBeacon`, WebSocket and EventSource are affected, none of which a
+ * static generated report uses. Images, styles and inline script — the
+ * things that make a report render — are untouched. `form-action 'none'`
+ * closes the same door for a form POST.
  */
+const SANDBOX_NO_NETWORK = "connect-src 'none'; form-action 'none'";
+
 const SANDBOXED_TYPES: Record<string, { type: string; csp: string }> = {
-  html: { type: "text/html; charset=utf-8", csp: "sandbox allow-scripts" },
-  htm: { type: "text/html; charset=utf-8", csp: "sandbox allow-scripts" },
-  xhtml: { type: "application/xhtml+xml", csp: "sandbox allow-scripts" },
-  svg: { type: "image/svg+xml", csp: "sandbox" },
+  html: { type: "text/html; charset=utf-8", csp: `sandbox allow-scripts; ${SANDBOX_NO_NETWORK}` },
+  htm: { type: "text/html; charset=utf-8", csp: `sandbox allow-scripts; ${SANDBOX_NO_NETWORK}` },
+  xhtml: {
+    type: "application/xhtml+xml",
+    csp: `sandbox allow-scripts; ${SANDBOX_NO_NETWORK}`,
+  },
+  svg: { type: "image/svg+xml", csp: `sandbox; ${SANDBOX_NO_NETWORK}` },
 };
 
 export interface ServePolicy {
@@ -332,13 +358,24 @@ export async function resolveUploadTarget(
  *    the vault, not uploaded over HTTP.
  */
 export function assertUploadAllowed(rel: string, ignore: string[]): void {
-  for (const seg of rel.split("/")) {
-    if (ignore.includes(seg)) {
-      throw new AttachmentError(400, `uploads into ${seg}/ are not allowed`);
+  try {
+    // The rule itself moved to `writepath.ts` during the seam-5 audit
+    // (tricks-spec.md §13), because it turned out to be *the* rule and
+    // not this endpoint's rule: `PUT /api/note` and the trick bridge ask
+    // the same function now. Two copies of a privilege boundary is how
+    // the next one gets fixed in one place and not the other.
+    //
+    // Deliberately no trick-data exception here. A trick's own data is
+    // written through the bridge, which knows which trick is asking; an
+    // upload has no such identity, so "anything on the tailnet may drop
+    // a file into some trick's data folder" would be the whole hole
+    // again in a smaller shape.
+    assertNetworkWritable(rel, ignore);
+  } catch (err) {
+    if (err instanceof WritePathError) {
+      throw new AttachmentError(400, `uploads into ${err.reason} are not allowed`);
     }
-  }
-  if (rel === ".claude" || rel.startsWith(".claude/")) {
-    throw new AttachmentError(400, "uploads into .claude/ are not allowed");
+    throw err;
   }
 }
 

@@ -414,6 +414,16 @@ is what makes it safe for the host to send the bridge port with
 `targetOrigin: "*"` (§6.2). Verified: a frame's attempt to navigate itself
 to `http://example.com/pwned` produced no network request (§10.6).
 
+> **Consequence for the frontend build, measured 2026-08-15 rather than
+> predicted:** this policy has no `'unsafe-inline'` for scripts, so an
+> inline `<script>` in the panel's `index.html` **does not run** — found
+> by writing a probe page with an inline script against the real server
+> and getting a blank page and no console error worth the name. Vite's
+> default build is external-script-only and is fine; anything that wants
+> an inline bootstrap needs a nonce, not `'unsafe-inline'`. This is served
+> as a response header by `@fastify/static`'s `setHeaders`, on `.html`
+> only — a CSP on a `.js` response governs nothing.
+
 ---
 
 ## 6. The bridge
@@ -575,12 +585,110 @@ must reject an out-of-scope request even if the host forwarded it. This is
 exactly the discipline `runTrickAction` already applies to `ruta`/`args`,
 generalized. A frontend bug must not become a vault-scope bug.
 
+### 6.8 The host↔server transport, and the shapes §6–§7 left open
+
+> **Added 2026-08-15 while implementing seams 1, 3 and 5.** Nothing above
+> this line changed: §6.1–§6.7 (envelope, port identity, one port per
+> mount) and §7's capability names and scope semantics are exactly as
+> written. This section only fills in things that were *unspecified* and
+> that two implementers would otherwise guess differently — the authoring
+> agent hit six of them writing the starter apps, and each one is settled
+> here rather than in a starter's `||` fallback.
+
+**Transport.** `POST /api/tricks/<name>/bridge`, one funnel, carrying the
+**same envelope** as §6.4 — the host relays the frame's message rather
+than translating it:
+
+```
+→  Content-Type: application/json   (required; 415 otherwise)
+   { "v": 1, "id": "q7", "op": "vault.query", "params": { … } }
+
+←  { "v": 1, "id": "q7", "ok": true,  "result": { … } }
+   { "v": 1, "id": "q7", "ok": false, "error": { "code": …, "message": … } }
+```
+
+- **The trick's identity is the URL's `<name>`.** There is no trick field
+  in the body to forge, exactly as there is none over `postMessage`
+  (§6.3). The host sets it from the frame it mounted.
+- **The HTTP status matches the error code** (`capability_denied` → 403,
+  `bad_request` → 400, `not_found` → 404, `conflict` → 409,
+  `too_many_requests` → 429, `unsupported_op` → 501, `internal` → 500),
+  and the body is the envelope regardless. The host must read the body on
+  a non-2xx: the status is there so an attack transcript or an access log
+  does not read `200 OK` for a refused write, and the `code` in the body
+  is the contract.
+- **`application/json` is required explicitly**, per §10.3's corollary. A
+  cross-origin page can always send a CORS-simple POST with no preflight;
+  requiring JSON means it must first pass a preflight this server does not
+  answer. That sits behind the cross-site guard in `index.ts` and behind
+  the frame's own `connect-src 'none'` — three independent fences, because
+  what is on the other side is "write the vault, run a script."
+- **256 KiB body limit** (§6.6), enforced by the parser. **20 ops/s,
+  burst 40, per trick** is enforced server-side too; the host should still
+  do its own, but the host is not the authority and a `curl` caller has no
+  host in front of it.
+
+**Wire shapes**, settled:
+
+| op | params | result |
+|---|---|---|
+| `vault.query` | `{ subcarpeta?, frontmatter?, frontmatter_exists?, sort?, limite? }` | `{ total, notes: [ … ] }` |
+| `vault.read` | `{ path }` | `{ path, content }`, plus `{ cuerpo, frontmatter }` for `.md` |
+| `vault.write` | `{ path, frontmatter?, cuerpo? }` | `{ path, bytes, created }` |
+| `estado.get` | — | `{ valor }`, `null` when unset |
+| `estado.set` | `{ valor }` | `{ path, bytes }` |
+| `script.run` | `{ indice }` | `{ ok, stdout, stderr, exitCode, timedOut }` |
+
+And the six decisions behind them:
+
+1. **A note summary's title key is `title`, not `titulo`.** §7.1's example
+   said `titulo`; the `Note` type, `/api/notes`, the graph and the
+   dashboard `columns` all say `title`, and the same paragraph says not to
+   fork the dashboard shape — so one had to give, and one example loses to
+   five call sites. The manifest's own keys stay Spanish (`carpeta`,
+   `campos`, `limite`, `cuerpo`, `valor`, `indice`): those are the
+   capability vocabulary, not the note model. `titulo` is still *accepted*
+   as an input spelling in `campos` and `sort.field`; the output key is
+   always `title`. **§7.1's example is corrected below.**
+2. **`vault.write` has no `crear` param.** `crear` is a manifest flag —
+   whether creating is allowed is the author's standing decision, not a
+   per-call one. The server infers "this is a creation" from the file not
+   existing and checks it against the flag; the caller learns which
+   happened from `created` in the result.
+3. **Setting a frontmatter key to `null` deletes that key.** It is still
+   bounded by `campos`, and the file and its history are untouched, so it
+   does not cross §7.3's "deletion is not a capability" line.
+4. **`estado.get` answers `{ valor }`, not a bare value** — symmetric with
+   `set`'s params, and it leaves room for a sibling field later without
+   changing the shape of every app that reads it. An unset store is
+   `{ valor: null }`, not an error: that is every app's first run.
+5. **`vault.read` returns `content` (the file exactly as on disk,
+   frontmatter fence and all) plus, for `.md`, the parsed `cuerpo` and
+   `frontmatter`.** The parsed halves exist because an app that renders a
+   note should not have to carry a YAML parser into a sandbox that cannot
+   load one from a CDN. The three names match `vault.write`'s params, so
+   read→edit→write needs no translation.
+6. **`sort` is `{ field, order }`** — the dashboard `query` widget's shape
+   (frontend plan §5.3). `field` is `mtime` | `path` | `title` | `size`,
+   or a frontmatter key written either as `frontmatter.<key>` (like
+   `columns`) or bare (like the dashboard's own `sort`, which is
+   inconsistent with its `columns` and not worth inheriting strictly).
+   `order` is `asc` | `desc`. Default: `mtime`, `desc`.
+
+**`trabajo.estado` answers `unsupported_op`** until seam 6 builds it —
+not `capability_denied`, which would send an author hunting a manifest bug
+that is not there.
+
 ---
 
 ## 7. Capabilities
 
 `capacidades` is a map. **A capability with no entry is denied.** There is
 no ambient authority and no default grant.
+
+This section defines what each capability *means* and what it scopes to.
+The exact params and result shape of each op are in **§6.8**, which was
+added after this section and does not change anything in it.
 
 The complete vocabulary, and the ops each manifest key grants. Any other
 key invalidates the manifest (§4.1):
@@ -604,9 +712,14 @@ not ops. A frame that wants to feature-detect `estado` checks for
 vault.query:
   carpeta: ".claude/tricks/gastos/data"   # required
   frontmatter: { tipo: gasto }            # optional, ALWAYS applied
-  campos: [path, titulo, frontmatter.monto]  # optional projection allowlist
+  frontmatter_exists: [fecha]             # optional, presence check
+  campos: [path, title, frontmatter.monto]   # optional projection allowlist
   limite: 500                             # optional, default 200, max 2000
 ```
+
+*(`title`, not `titulo` — corrected 2026-08-15, see §6.8 decision 1. The
+projected note field names are the panel's existing `Note` model, which
+is English; the manifest keys around them stay Spanish.)*
 
 Request params may **narrow, never widen**:
 
@@ -1174,5 +1287,25 @@ renegotiated locally.
   around the frame, not solved.
 - **`app/` has no size or file-count limit** specified. Add one before a
   trick ships a 40 MB asset.
+- **A `vault.write` that touches one frontmatter field reformats YAML
+  dates in the same file.** Measured: writing `monto` to a note rewrote
+  `fecha: 2026-08-01` as `fecha: 2026-08-01T00:00:00.000Z`, because the
+  read-modify-write goes through `gray-matter`/`js-yaml`, which parse a
+  YAML timestamp into a `Date` and dump it back as ISO. Not a security
+  issue; it is a git-diff issue in a git-backed vault, and it will hit
+  dashboard row actions (plan §5.5) identically. Worth one fix in one
+  place — a YAML schema that leaves timestamps as strings — rather than
+  two divergent ones.
+- **The attachment preview tier could reach the network until
+  2026-08-15.** `Content-Security-Policy: sandbox allow-scripts` with no
+  other directive gives an opaque origin that can still `fetch`. Measured
+  in Chrome: an uploaded `report.html` served by `/api/attachment` issued
+  `fetch("/api/note?path=…")` and the request arrived. Nothing was read
+  (no `Access-Control-Allow-Origin` on data routes) or written (the
+  cross-site guard), but "talking to the outside world" is an escalation
+  in its own right (§2.1). Now carries `connect-src 'none';
+  form-action 'none'`, matching the trick-app policy; re-measured as
+  blocked. The general shape is worth keeping in mind: **an opaque origin
+  bounds what a document can *read*, never what it can *send*.**
 - **Nothing enumerates which tricks exist to a scheduled job**; a job that
   wants a trick's data reads the files, like everything else.
