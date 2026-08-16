@@ -218,7 +218,7 @@ be re-discovered.
 ## Getting a deployment running
 
 ```sh
-git clone <PRIVATE_REPO_URL> ~/raymond
+git clone https://github.com/DavidCorredorM/raymond.git ~/raymond
 cd ~/raymond
 ./scripts/bootstrap.sh          # Node, Claude Code, base tooling, vault skeleton
 cd panel/server && npm install && npx tsc -p tsconfig.json
@@ -229,6 +229,21 @@ Then the systemd unit in `panel/deploy/`, and `sudo ufw allow in on
 tailscale0 to any port 8710` — never opened to the raw LAN, only the
 tailnet. Full walkthrough: `docs/08-server-setup.md` and
 `panel/deploy/README.md`.
+
+**The repo is public, read-only to everyone but the maintainer.** Decided
+2026-08-15, deliberately: the alternative was a private repo with a
+deploy key per customer machine, which means real, ongoing key
+provisioning and rotation work for every deployment, and one leaked key
+per box instead of zero. Nothing in this repo is a secret — no vault
+content, no credentials, no deployment-specific detail (`deployments/` is
+gitignored except its own README, checked against the full commit
+history before this repo went public, not just the working tree). What a
+deployment loses by that isn't secrecy, it's that anyone can read the
+skills and tricks shipped here; what it buys every "customer Raymond" is
+`git pull` needing no credential at all, ever, on a box that already has
+no authentication in front of it (rule 3). This is also the precondition
+for the update-pull mechanism in `docs/roadmap.md` — pulling updates from
+a URL nobody has to be handed a key for.
 
 ## Conventions
 

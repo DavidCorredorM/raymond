@@ -40,7 +40,7 @@ Deliberately not included:
 ## Run it
 
 ```sh
-git clone <PRIVATE_REPO_URL> ~/raymond
+git clone https://github.com/DavidCorredorM/raymond.git ~/raymond
 cd ~/raymond
 ./scripts/bootstrap.sh
 ```

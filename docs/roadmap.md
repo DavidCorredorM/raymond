@@ -10,6 +10,12 @@ SIGRA skills lives in her deployment, not here.
 
 ## 5. Git remote for the vault
 
+This is about a **deployment's own vault** (`~/raymond-brain`), which
+must stay private — it is one customer's real notes. Not to be confused
+with the base package's own remote, which is a different repo, decided
+2026-08-15, and is now public read-only (see §13 and README, "Getting a
+deployment running").
+
 Right now a vault's git history lives only on the machine it was created
 on. A disk failure loses all of it — notes and history both. Needs:
 
@@ -330,3 +336,59 @@ trick of the same name. The design is in the skill; these are the gaps.
   queue needs a UI, not an example of what a trick can be. If a second
   default trick is ever proposed, this is the precedent to argue with —
   the rule is "no examples", not "no tricks".
+
+## 13. Update distribution — a public repo, a puller, and a manifest
+
+Decided 2026-08-15: the base package is now a real, pushed git repo —
+`https://github.com/DavidCorredorM/raymond`, public read-only, one
+collaborator (the maintainer). Not a hypothetical `<PRIVATE_REPO_URL>`
+placeholder any more. See README, "Getting a deployment running", for the
+reasoning on public-vs-private (no credential to provision or leak on any
+deployment, at the cost of the skills and tricks being world-readable —
+judged an acceptable trade for a boutique deployment whose value is the
+relationship and the customization, not secret prompt text).
+
+**What exists now:** the remote, and `git clone` in place of the tar
+workaround `deployments/angela.md` documented (that workaround existed
+*because* there was no remote to clone from — this is completing the
+design the docs already described, not changing it).
+
+**What does not exist yet — this section is the spec for it, not a
+built feature:**
+
+- A skill (`update-raymond` or similar, base package) plus a script
+  under `scripts/` that: `git fetch`s the public remote, fast-forwards
+  `~/raymond` only (never a merge — this is machinery, no local edits
+  are expected in `panel/`, `scripts/`, `docs/`), rebuilds
+  (`npm install` + `tsc` + `vite build`) only when something under
+  `panel/` actually changed, and restarts `raymond-panel` only when a
+  rebuild happened. `~/raymond`'s own `git log -1` *is* the version
+  marker — no separate file needed, now that it is a real clone.
+- **A second, harder half: syncing `vault-template/` changes into a
+  live deployment's vault**, which is a *different* git repo
+  (`~/raymond-brain`) with no ancestry relationship to the base repo.
+  This needs the machinery/seed distinction `vault-steward`'s
+  `conventions.md` already established as a pattern (a written,
+  checkable rule beats an implicit one): some template paths
+  (`_tools/*`, the base skills, `vault-steward` itself) are machinery —
+  overwrite on update, nobody edits these per-deployment — and some
+  (`CLAUDE.md`, `index.md`, folder indexes, `panel/home.md`,
+  `_templates/*`) are seed — copied once, then the deployment's own,
+  **never** overwritten, only diffed and reported so a human can decide
+  whether to hand-merge. This needs its own version marker, written
+  into the vault (rule 1: files are the only state) — e.g. a note under
+  `.claude/` recording which base-package commit the vault last synced
+  template content from — since the vault has no git relationship to
+  the base repo to read that off of.
+- **`schedule-job` is the scheduling mechanism**, not a new one. This
+  feature is "write a skill, then use the skill that already exists to
+  install it on a cron," not a second scheduler.
+- **A manifest, written down, not inferred.** A literal list (or a
+  section of a doc a script parses) naming which paths are machinery and
+  which are seed. Guessing this per-file from context is how a future
+  skill silently overwrites someone's customized `CLAUDE.md`.
+- Angela's deployment is still on a `tar`-deployed `~/raymond` with no
+  git ancestry to the new remote. Converting her specifically (backup,
+  re-clone, redeploy) is deployment-specific work, not base-package
+  work — track it in her `deployments/angela.md` (gitignored) when this
+  is built, the same split roadmap #9 used for her SIGRA skills.
