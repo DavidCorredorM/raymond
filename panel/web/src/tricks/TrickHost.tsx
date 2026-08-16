@@ -107,6 +107,19 @@ export function TrickHost({ name, titulo, alto, capacidades }: TrickHostProps) {
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   const [phase, setPhase] = useState<Phase>("loading");
   const [problems, setProblems] = useState<Problem[]>([]);
+  /**
+   * A one-time mount token (tricks.ts, "Fallback for browsers that send
+   * no Sec-Fetch-* headers at all"). Minted fresh for every mount,
+   * regardless of browser — page script cannot read `Sec-Fetch-*`, so
+   * there is no way to know in advance whether the strict gate or the
+   * fallback will end up deciding the entrada request. On a modern
+   * browser the token is embedded in the iframe's `src` and then never
+   * looked at server-side; `appRequestGate` already decided by the time
+   * `fallbackAppGate` would run. The iframe does not mount until this
+   * exists, which is the one visible cost: a short "mounting…" beat
+   * before the frame appears, for every browser, not only old ones.
+   */
+  const [mountToken, setMountToken] = useState<string | null>(null);
 
   // Object identity from a refetch must not remount the frame, so the
   // effect below depends on the *content* of these, not the objects.
@@ -126,9 +139,41 @@ export function TrickHost({ name, titulo, alto, capacidades }: TrickHostProps) {
     );
   }, []);
 
+  // Mint a mount token before ever pointing the iframe at the app —
+  // separate from the effect below because it must run (and complete)
+  // before that effect's own dependency on `mountToken` can go true, and
+  // because a remount of the same trick needs a *fresh* one-time token,
+  // not the previous mount's spent one.
+  useEffect(() => {
+    setMountToken(null);
+    const controller = new AbortController();
+    (async () => {
+      try {
+        const res = await fetch(`/api/tricks/${encodeURIComponent(name)}/mount`, {
+          method: "POST",
+          signal: controller.signal,
+        });
+        if (!res.ok) {
+          throw new Error(`mount token request failed with ${res.status}`);
+        }
+        const body = (await res.json()) as { token?: unknown };
+        if (typeof body.token === "string" && body.token) {
+          setMountToken(body.token);
+        } else {
+          throw new Error("mount token response had no token");
+        }
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        console.warn(`[trick ${name}] could not mint a mount token`, err);
+        report("(mount)", "internal", "could not obtain a mount token — see console");
+      }
+    })();
+    return () => controller.abort();
+  }, [name, report]);
+
   useEffect(() => {
     const frame = frameRef.current;
-    if (!frame) return;
+    if (!frame || !mountToken) return;
 
     const declared = new Set(capKeysSignature ? capKeysSignature.split(",") : []);
     const scope = foldersSignature ? foldersSignature.split(",") : [];
@@ -421,10 +466,15 @@ export function TrickHost({ name, titulo, alto, capacidades }: TrickHostProps) {
     };
     // `capKeysSignature`/`foldersSignature` rather than the objects: a
     // 30-second refetch of the same manifest must not remount the frame
-    // and mint a new port.
-  }, [name, capKeysSignature, foldersSignature, report]);
+    // and mint a new port. `mountToken` is required so this effect —
+    // which is what actually renders the iframe and wires up `onLoad` —
+    // re-runs once the token that gates the render below finally exists;
+    // a ref becoming non-null does not by itself retrigger an effect.
+  }, [name, capKeysSignature, foldersSignature, mountToken, report]);
 
-  const src = `/api/tricks/${encodeURIComponent(name)}/app/`;
+  const src = mountToken
+    ? `/api/tricks/${encodeURIComponent(name)}/app/?_m=${encodeURIComponent(mountToken)}`
+    : undefined;
 
   return (
     <div className="trick-host">
@@ -439,7 +489,11 @@ export function TrickHost({ name, titulo, alto, capacidades }: TrickHostProps) {
         </span>
       </div>
 
-      {phase === "navigated-away" ? (
+      {!mountToken ? (
+        <div className="trick-host-mounting">
+          <p className="muted">Mounting {titulo}…</p>
+        </div>
+      ) : phase === "navigated-away" ? (
         <div className="trick-host-gone">
           <p>This trick navigated away from its app.</p>
           <p className="muted">

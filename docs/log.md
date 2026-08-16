@@ -2306,3 +2306,79 @@ in the skill itself.
   work started. Converting her specifically is out of scope here, same
   split as her SIGRA skills (roadmap §9): tracked in her own
   `deployments/angela.md`, not the base package.
+
+## [2026-08-15] Trick apps: a fallback for browsers that send no Sec-Fetch-* at all
+
+Found live, on Angela's deployment: `vault-steward` refused to open with
+`appRequestGate`'s own message, `dest:null, site:null`, over a real
+Tailscale MagicDNS address — a genuine device on her tailnet (consistent
+with an older Safari, an iOS WebView, or a locked-down corporate
+browser), not curl and not a dev artifact. `panel/docs/tricks-spec.md`
+§5.3's `dest absent → 403` was correct for the signal it had; the gap was
+that it had no fallback, so a browser like this one could not use tricks
+at all.
+
+### What was built
+
+`panel/docs/tricks-spec.md` §5.5 has the full design and threat-model
+reasoning; short version: `POST /api/tricks/:name/mount` mints a
+single-use, per-trick token, guarded by nothing new — the cross-site
+guard already in `index.ts` covers it, and its `Origin` check (which
+predates Fetch Metadata by a decade) is what actually carries the weight
+for exactly the browsers this exists for, since their `Sec-Fetch-Site` is
+also absent. The panel now mints one before every mount, for every
+browser, because page script cannot read `Sec-Fetch-*` and so cannot know
+in advance which path a given browser needs.
+
+The token authenticates the entrada exactly once; success opens a short,
+per-trick-name window that subsequent subresource requests are checked
+against instead, since a relative `<link href>`/`<script src>` cannot
+carry the token itself. The window only ever serves an allowlist of
+ordinary subresource extensions — `.html`, `.svg` and `.xml` are excluded
+even while the window is open, because each can carry and run its own
+script when navigated to directly, which is the exact redirector
+`appRequestGate` exists to prevent. Confirmed live (§10.11): planting an
+`other.html` next to a real trick's `index.html` and requesting it during
+a genuinely open fallback window still gets refused.
+
+### Why not the obvious shape
+
+A cookie looked like the obvious transport. Measured against a real
+sandboxed iframe in real Chrome before writing any server code:
+`SameSite=Lax`/`Strict` cookies never reached a request made from inside
+`sandbox="allow-scripts"` (no `allow-same-origin`) for a same-origin
+resource — the opaque origin breaks the ancestor-chain same-site check a
+browser uses to decide whether to attach one, regardless of the *URL*
+being same-origin. Only `SameSite=None` partially got through, and that
+variant requires `Secure`, which requires HTTPS, which this deployment
+doesn't have. Full writeup and the measurement table are in §5.5 — this
+is the kind of finding that belongs in the spec, not just a commit
+message, because the next person who reaches for a cookie here needs to
+see why it doesn't work before trying it again.
+
+### Verification
+
+§10.11 in the spec has the full attack log: the existing strict path
+unchanged for a real, unmodified Chrome (confirmed via the actual
+`Sec-Fetch-Dest`/`Sec-Fetch-Site` values on the wire, not assumed); the
+full fallback flow working end-to-end through `curl` — which reproduces
+the live bug's own header shape exactly, `dest`/`site` both absent — from
+base case through mint, single use, window, and expiry; the mint
+endpoint refused cross-origin both via `curl` and via a real second-origin
+browser page issuing the exact `fetch(..., {mode:"no-cors"})` attack
+`§10.3` established for other endpoints; and a valid, unused token
+embedded in a real top-level Chrome navigation still refused by the
+strict gate, unconsumed. `npm test` (57 server cases, 8 new; 232 web
+cases, unchanged) and `npm run build` clean in both `panel/server` and
+`panel/web`.
+
+**Not verified**: an actual pre-16.4 Safari (or equivalent) rendering
+engine. Two different attempts to make a real Chrome request genuinely
+omit `Sec-Fetch-*` — Playwright route interception, then a raw CDP
+`Fetch.continueRequest` — both left the header on the wire unchanged;
+Chrome recomputes it after either interception point. `assumed:` a real
+old-Safari engine renders the fallback-authorized bytes the same way
+Chrome already renders the strict-authorized ones, since the fallback
+changes only whether a response is sent, never what's in it — carried in
+§14 as the same class of gap the original `Sec-Fetch` gate work already
+had for Firefox and Safari.

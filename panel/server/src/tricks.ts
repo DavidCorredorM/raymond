@@ -1,6 +1,7 @@
 import { readFile, readdir, realpath, stat } from "node:fs/promises";
 import { join, normalize, isAbsolute, sep } from "node:path";
 import { execFile } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { load as loadYaml } from "js-yaml";
 import { z } from "zod";
 import { isUnder, trickDataDir } from "./writepath.js";
@@ -693,6 +694,260 @@ export function appRequestGate(dest: unknown, site: unknown): AppGate {
     return { ok: false, status: 403, error: "a trick app cannot be opened as a page" };
   }
   // Subresource. Deliberately no Sec-Fetch-Site check — see above.
+  return { ok: true };
+}
+
+/**
+ * Fallback for browsers that send **no** `Sec-Fetch-*` headers at all —
+ * found live, 2026-08-15, on the one real deployment: `vault-steward`
+ * failed with `appRequestGate`'s own refusal message, logged with
+ * `dest:null, site:null`, over a genuine Tailscale MagicDNS address. Not a
+ * dev artifact — a real device on the tailnet (older Safari before 16.4,
+ * an iOS in-app WebView, or a locked-down corporate browser) that never
+ * sends Fetch Metadata. `appRequestGate`'s `dest absent → 403` is correct
+ * for *that* signal, but it has no fallback, so those browsers cannot use
+ * tricks at all.
+ *
+ * The constraint that makes this hard: the gate exists to stop exactly one
+ * thing — a top-level sandboxed document navigating itself, the redirector
+ * `§10.6` measured before the gate existed. Whatever replaces the missing
+ * signal must not let that back in, and it has to authenticate **every**
+ * request the mount makes (entrada and every subresource), because a
+ * browser that sends no `Sec-Fetch-Dest` sends none on *any* of them —
+ * this is not "the first request is unlabelled," it is "none of them are."
+ *
+ * **Why not a cookie.** A cookie looks like the obvious transport: set it
+ * once, let the browser attach it to every subsequent request for free.
+ * Measured against a real sandboxed iframe in real Chrome (throwaway
+ * harness, not in this repo) before writing this code:
+ *
+ * - `SameSite=Lax` and `SameSite=Strict` cookies, set by a same-origin
+ *   top-level request, were attached **zero times** to a request made
+ *   *from inside* `<iframe sandbox="allow-scripts">` (no
+ *   `allow-same-origin`) for a resource on that same real origin — not to
+ *   an `<img src>`, not to a `fetch`. The frame's opaque origin breaks the
+ *   ancestor-chain "same-site" check the browser uses to decide whether to
+ *   attach them, and that check does not care that the *URL* being
+ *   requested is same-origin — only that the *requesting document's
+ *   origin* is opaque, which every trick frame's is, by design (§5.1).
+ * - Only `SameSite=None` reached the server at all, and inconsistently —
+ *   the `<img>` request carried it, a same-context `fetch()` did not
+ *   (default `credentials: "same-origin"`, and "same-origin" from an
+ *   opaque origin matches nothing). `SameSite=None` also requires
+ *   `Secure`, which requires HTTPS, which this deployment does not have
+ *   (`panel/deploy/README.md`: no auth, the tailnet is the perimeter,
+ *   plain HTTP) — so the one variant that partially worked cannot be set
+ *   on the real server at all.
+ *
+ * So a cookie cannot reach a trick's subresource requests on this
+ * deployment, reliably or not. Nothing here reads or sets one.
+ *
+ * **Why not a plain GET-minted credential.** Even if delivery worked, GET
+ * is CORS-simple: any page the vault's owner has open in *any* tab could
+ * trigger a GET side effect with no preflight, exactly the shape §10.3
+ * found for a "simple" POST. A cross-site page silently priming a fallback
+ * credential ahead of a later attack is worse than not having a fallback.
+ *
+ * **The mechanism.** `POST /api/tricks/:name/mount` (below) mints a
+ * single-use, per-trick token — reusing the cross-site guard in
+ * `index.ts` rather than inventing a second one, exactly as this file's
+ * own comment on `correr_script` and `§6.8`'s bridge route already do for
+ * every other mutating endpoint. The panel mints one immediately before
+ * setting the iframe's `src`, for **every** mount regardless of browser —
+ * page script cannot read `Sec-Fetch-*`, so there is no way to feature-
+ * detect the strict path and skip minting only when it's needed.
+ *
+ * The token authenticates the *entrada* request once (`consumeMountToken`)
+ * and, on success, opens a short **per-trick-name** window
+ * (`openWindows`) that subsequent subresource requests for that same
+ * trick are checked against instead — subresources can't carry the token
+ * themselves, since `<link href="style.css">` resolves with no query
+ * string to append it to, and rewriting the app's HTML to inject one was
+ * already rejected for `srcdoc` in §5.2 for the same reason: it cannot
+ * reach a URL a script builds at runtime, and "no constraints on the
+ * app's code" is the whole point of this design.
+ *
+ * **Residual risk, named rather than hidden.** During that window, *any*
+ * dest-absent GET for that trick's subresource paths is served — there is
+ * no way to tie the window back to one specific document instance without
+ * a per-request credential, and subresources have none. If that window
+ * covered `.html` (or `.svg`, or anything else a browser can render and
+ * run script in as a full top-level document), a raw top-level open of
+ * *that* path during the window would be exactly the redirector this gate
+ * exists to prevent, just one file over from the one the token actually
+ * guards. Closed, not merely accepted: `isFallbackSafeExtension` allow-
+ * lists ordinary subresource types only (css, js, images, fonts, media,
+ * wasm, …) and excludes `.html`/`.htm` (only the manifest's declared
+ * `entrada` may ever be served that way, and only once per token) and
+ * `.svg`/`.xml` (both can carry and run their own script when navigated to
+ * directly, same failure mode as html). `frame-src 'none'` in `APP_CSP`
+ * means a well-behaved app never needs an `.html` subresource anyway — a
+ * trick cannot frame anything, including its own other pages — so the
+ * exclusion costs nothing a real app was using. It does cost old-Safari-
+ * class browsers the ability to use `.svg` assets in a trick (§14): a
+ * known, deliberate gap, not an oversight.
+ *
+ * The entrada check stays single-use even within the window: a second GET
+ * for the entrada path with the same (now-spent) token fails, so the
+ * token itself cannot be replayed to re-open a fresh top-level load later
+ * — only the one mount it was minted for gets to use it, and only once.
+ *
+ * **Regression safety.** None of this runs unless `Sec-Fetch-Dest` is
+ * entirely absent. A browser that sends it — the strict majority — hits
+ * `appRequestGate` exactly as before; this code never sees that request.
+ */
+
+/** How long a minted token stays valid for its one entrada load. */
+const MOUNT_TOKEN_TTL_MS = 20_000;
+/** How long, from a successful entrada load, that trick's subresources may load for. */
+const MOUNT_WINDOW_MS = 20_000;
+
+interface MountTokenState {
+  trick: string;
+  expiresAt: number;
+  entradaServed: boolean;
+}
+
+/** token → its state. Per-process, in-memory — same posture as `bridge.ts`'s rate-limit buckets: an operational ceiling, not vault state, and losing it on restart costs nothing but a remount. */
+const mountTokens = new Map<string, MountTokenState>();
+/** trick name → when its subresource window closes. */
+const openWindows = new Map<string, number>();
+
+function sweepMountState(now: number): void {
+  for (const [token, state] of mountTokens) {
+    if (state.expiresAt <= now) mountTokens.delete(token);
+  }
+  for (const [name, expiresAt] of openWindows) {
+    if (expiresAt <= now) openWindows.delete(name);
+  }
+}
+
+/**
+ * Mints a token for one trick, only after confirming — with the same
+ * fresh, never-cached disk read every other trick route uses — that the
+ * trick currently validates. A token minted for a name that doesn't
+ * resolve to a real trick would be inert (the entrada check re-validates
+ * the manifest anyway when it's actually used), but failing here means
+ * the panel's mount UI sees the same 404 it would from `GET
+ * /api/tricks/:name` instead of a token that can never be spent.
+ */
+export async function mintMountToken(
+  vaultDir: string,
+  name: string,
+  now = Date.now(),
+): Promise<string> {
+  await readTrickManifest(vaultDir, name);
+  sweepMountState(now);
+  const token = randomBytes(24).toString("hex");
+  mountTokens.set(token, { trick: name, expiresAt: now + MOUNT_TOKEN_TTL_MS, entradaServed: false });
+  return token;
+}
+
+function consumeMountToken(name: string, token: unknown, now: number): boolean {
+  if (typeof token !== "string" || token.length === 0) return false;
+  sweepMountState(now);
+  const state = mountTokens.get(token);
+  if (!state || state.trick !== name || state.expiresAt <= now || state.entradaServed) {
+    return false;
+  }
+  // Spent for the entrada regardless of what happens next — a second GET
+  // for the entrada with this same token must fail (see file comment).
+  state.entradaServed = true;
+  openWindows.set(name, now + MOUNT_WINDOW_MS);
+  return true;
+}
+
+function hasOpenWindow(name: string, now: number): boolean {
+  sweepMountState(now);
+  const expiresAt = openWindows.get(name);
+  return typeof expiresAt === "number" && expiresAt > now;
+}
+
+/**
+ * Subresource types the fallback window will ever serve. Deliberately an
+ * allowlist, not a blocklist of the dangerous ones — the default for an
+ * extension nobody has thought about is refuse, same posture
+ * `appContentType` takes for `Content-Type` itself. `.html`/`.htm`
+ * (reserved for the one-shot entrada check) and `.svg`/`.xml` (can run
+ * script when navigated to directly, same as html) are the exclusions
+ * that matter; see the file comment for why.
+ */
+const FALLBACK_SAFE_EXTENSIONS = new Set([
+  "css",
+  "js",
+  "mjs",
+  "json",
+  "map",
+  "txt",
+  "csv",
+  "md",
+  "png",
+  "jpg",
+  "jpeg",
+  "gif",
+  "webp",
+  "avif",
+  "bmp",
+  "ico",
+  "woff",
+  "woff2",
+  "ttf",
+  "otf",
+  "mp3",
+  "wav",
+  "ogg",
+  "mp4",
+  "webm",
+  "wasm",
+]);
+
+function isFallbackSafeExtension(relPath: string): boolean {
+  const base = relPath.split("/").pop() ?? "";
+  const ext = base.includes(".") ? base.split(".").pop()!.toLowerCase() : "";
+  return FALLBACK_SAFE_EXTENSIONS.has(ext);
+}
+
+/**
+ * The fallback decision for one `GET /api/tricks/:name/app/*` request that
+ * arrived with no `Sec-Fetch-Dest` at all. `rel` is the file path already
+ * resolved and validated by `resolveAppFile` (so path-escape is already
+ * ruled out by the time this runs); `isEntrada` is whether it equals the
+ * manifest's own `app.entrada`.
+ */
+export function fallbackAppGate(
+  name: string,
+  rel: string,
+  isEntrada: boolean,
+  token: unknown,
+  now = Date.now(),
+): AppGate {
+  if (isEntrada) {
+    if (!consumeMountToken(name, token, now)) {
+      return {
+        ok: false,
+        status: 403,
+        error:
+          "no valid one-time mount token for this trick — a browser sending no " +
+          "Sec-Fetch-Dest must be mounted through the panel, which mints one " +
+          "immediately before loading the frame (POST /api/tricks/:name/mount)",
+      };
+    }
+    return { ok: true };
+  }
+  if (!isFallbackSafeExtension(rel)) {
+    return {
+      ok: false,
+      status: 403,
+      error: "this file type is not servable to a browser that sends no Sec-Fetch-Dest",
+    };
+  }
+  if (!hasOpenWindow(name, now)) {
+    return {
+      ok: false,
+      status: 403,
+      error: "no active fallback mount session for this trick — load its entrada first",
+    };
+  }
   return { ok: true };
 }
 
