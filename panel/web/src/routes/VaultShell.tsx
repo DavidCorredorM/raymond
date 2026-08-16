@@ -3,6 +3,7 @@ import { NavLink, Outlet } from "react-router-dom";
 import { useAttachments, useNotes } from "../api/queries";
 import { NoteTree } from "../components/NoteTree";
 import { SearchBox, filterAttachments, filterNotes } from "../components/SearchBox";
+import { ResizablePanel } from "../components/ResizablePanel";
 
 function subnavClass({ isActive }: { isActive: boolean }): string {
   return "vault-subnav-link" + (isActive ? " active" : "");
@@ -35,43 +36,52 @@ export function VaultShell() {
 
   return (
     <div className="vault-shell">
-      <aside className="sidebar">
-        <nav className="vault-subnav">
-          <NavLink to="/vault" end className={subnavClass}>
-            Notes
-          </NavLink>
-          <NavLink to="/vault/graph" className={subnavClass}>
-            Graph
-          </NavLink>
-          <NavLink to="/vault/health" className={subnavClass}>
-            Health
-          </NavLink>
-        </nav>
-        <SearchBox value={query} onChange={setQuery} />
-        <nav className="note-tree">
-          {isLoading && <p className="muted">Loading notes…</p>}
-          {isError && <p className="note-error">{(error as Error).message}</p>}
-          {notes && (
-            <NoteTree notes={filtered} attachments={filteredFiles} showSystem={showSystem} />
+      <ResizablePanel
+        storageKey="raymond:sidebar"
+        side="start"
+        defaultWidth={300}
+        min={220}
+        max={560}
+        ariaLabel="Resize the note list"
+      >
+        <aside className="sidebar">
+          <nav className="vault-subnav">
+            <NavLink to="/vault" end className={subnavClass}>
+              Notes
+            </NavLink>
+            <NavLink to="/vault/graph" className={subnavClass}>
+              Graph
+            </NavLink>
+            <NavLink to="/vault/health" className={subnavClass}>
+              Health
+            </NavLink>
+          </nav>
+          <SearchBox value={query} onChange={setQuery} />
+          <nav className="note-tree">
+            {isLoading && <p className="muted">Loading notes…</p>}
+            {isError && <p className="note-error">{(error as Error).message}</p>}
+            {notes && (
+              <NoteTree notes={filtered} attachments={filteredFiles} showSystem={showSystem} />
+            )}
+            {attachmentsQuery.isError && (
+              <p className="muted attachment-index-error">
+                Files other than notes aren't listed — the panel server didn't answer
+                /api/attachments.
+              </p>
+            )}
+          </nav>
+          {systemCount > 0 && (
+            <label className="system-toggle">
+              <input
+                type="checkbox"
+                checked={showSystem}
+                onChange={(e) => setShowSystem(e.target.checked)}
+              />
+              Show {systemCount} system file{systemCount === 1 ? "" : "s"}
+            </label>
           )}
-          {attachmentsQuery.isError && (
-            <p className="muted attachment-index-error">
-              Files other than notes aren't listed — the panel server didn't answer
-              /api/attachments.
-            </p>
-          )}
-        </nav>
-        {systemCount > 0 && (
-          <label className="system-toggle">
-            <input
-              type="checkbox"
-              checked={showSystem}
-              onChange={(e) => setShowSystem(e.target.checked)}
-            />
-            Show {systemCount} system file{systemCount === 1 ? "" : "s"}
-          </label>
-        )}
-      </aside>
+        </aside>
+      </ResizablePanel>
       <main className="content">
         <Outlet />
       </main>

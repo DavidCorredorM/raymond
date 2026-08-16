@@ -274,16 +274,14 @@ a {
   height: 100%;
 }
 
+/* Sizing (width, flex-shrink, height) lives on .resizable-panel-body now
+   (ResizablePanel.tsx) — .sidebar is just the visual surface inside it. */
 .sidebar {
-  width: 300px;
-  flex-shrink: 0;
   background: var(--bg-raised);
   border-right: 1px solid var(--border);
   padding: 12px;
   overflow-y: auto;
   height: 100%;
-  position: sticky;
-  top: 0;
 }
 
 .vault-subnav {
@@ -409,8 +407,7 @@ a {
 
 .note-route {
   display: flex;
-  gap: 32px;
-  align-items: flex-start;
+  align-items: stretch;
 }
 
 .note-content {
@@ -538,11 +535,13 @@ a {
   white-space: nowrap;
 }
 
+/* Width/flex-shrink live on .resizable-panel-body now — the divider
+   itself is the visual separator, so the border-left that used to sit
+   on this element was dropped (it doubled the divider). */
 .backlinks-panel {
-  width: 260px;
-  flex-shrink: 0;
-  border-left: 1px solid var(--border);
-  padding-left: 20px;
+  height: 100%;
+  padding-left: 16px;
+  overflow-y: auto;
 }
 
 .backlinks-panel h2 {
@@ -552,6 +551,95 @@ a {
 
 .backlinks-panel ul {
   padding-left: 18px;
+}
+
+/* ---------------------------------------------------------------------
+   Resizable panels (ResizablePanel.tsx) — the sidebar and the backlinks
+   panel. Owner's ask #2: drag the divider, fold to zero and back, width
+   persisted across reloads. The drag/collapse maths lives in
+   lib/resizable.ts; this is just its visual surface.
+   --------------------------------------------------------------------- */
+
+.resizable-panel {
+  display: flex;
+  align-items: stretch;
+  flex-shrink: 0;
+  height: 100%;
+}
+
+.resizable-panel-body {
+  flex-shrink: 0;
+  height: 100%;
+  overflow: hidden;
+  transition: width 0.15s ease;
+}
+
+/* No transition while a drag is live — the width has to track the
+   pointer exactly, not ease toward it a frame behind. */
+.resizable-panel.no-transition .resizable-panel-body {
+  transition: none;
+}
+
+.resize-handle {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 10px;
+  margin: 0 -4px;
+  position: relative;
+  z-index: 1;
+  cursor: col-resize;
+  /* Pointer events, not native drag-and-drop: this stops the browser's
+     own touch-scroll gesture from fighting a drag started with a finger
+     on the iPad this panel is used from. */
+  touch-action: none;
+  color: transparent;
+}
+
+.resize-handle::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--border);
+  transform: translateX(-50%);
+}
+
+.resize-handle:hover,
+.resize-handle:focus-visible,
+.resize-handle.dragging {
+  color: var(--fg-muted);
+}
+
+.resize-handle:hover::before,
+.resize-handle:focus-visible::before,
+.resize-handle.dragging::before {
+  width: 2px;
+  background: var(--accent);
+}
+
+.resize-handle.collapsed::before {
+  /* A collapsed panel still needs a visible, grabbable seam — otherwise
+     "folding to zero and back" has no way back short of clearing
+     localStorage. */
+  background: var(--border-strong);
+}
+
+.resize-handle-grip {
+  display: flex;
+  pointer-events: none;
+}
+
+/* Wider hit area on a touchscreen (this gets used from an iPad) — the
+   visual line stays a hairline, only the grabbable zone grows. */
+@media (pointer: coarse) {
+  .resize-handle {
+    width: 22px;
+    margin: 0 -10px;
+  }
 }
 
 .markdown-body {

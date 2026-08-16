@@ -9,6 +9,7 @@ import { stripFrontmatter } from "../lib/frontmatter";
 import { DashboardRenderer, isDashboardFrontmatter } from "../dashboards/DashboardRenderer";
 import { useEditorStore } from "../editor/editorStore";
 import { useUnsavedChangesGuard } from "../editor/useUnsavedChangesGuard";
+import { ResizablePanel } from "../components/ResizablePanel";
 
 // CodeMirror + its language/autocomplete packages are a meaningful chunk of
 // weight (same reasoning as react-force-graph-2d in App.tsx) and are only
@@ -185,7 +186,16 @@ export function NoteRoute() {
           </>
         )}
       </article>
-      <BacklinksPanel backlinks={note.backlinks} notes={notesQuery.data ?? []} />
+      <ResizablePanel
+        storageKey="raymond:backlinks"
+        side="end"
+        defaultWidth={260}
+        min={180}
+        max={480}
+        ariaLabel="Resize the backlinks panel"
+      >
+        <BacklinksPanel backlinks={note.backlinks} notes={notesQuery.data ?? []} />
+      </ResizablePanel>
     </div>
   );
 }
