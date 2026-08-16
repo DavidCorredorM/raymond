@@ -77,6 +77,13 @@ const router = createBrowserRouter([
  * Settings in the first tab without needing a manual reload. Renders
  * nothing; `useHealth` already drives the rest of the app's "is the
  * server up" signal, this just also listens to one field of it.
+ *
+ * Also mirrors the value onto `<html lang>` — index.html ships with a
+ * hardcoded `lang="en"` (it has to ship with *something*, and English
+ * matches the server's own default), which is otherwise the one piece of
+ * language state in this app that a pure client-side dictionary swap
+ * never touches. Screen readers and the browser's own "translate this
+ * page?" prompt both read that attribute, not the DOM text.
  */
 function LanguageSync() {
   const { data } = useHealth();
@@ -84,6 +91,9 @@ function LanguageSync() {
   useEffect(() => {
     if (data?.language) setLanguage(data.language);
   }, [data?.language, setLanguage]);
+  useEffect(() => {
+    if (data?.language) document.documentElement.lang = data.language;
+  }, [data?.language]);
   return null;
 }
 
