@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useT } from "../i18n/store";
+import { interpolate } from "../i18n/interpolate";
 import {
   byteLength,
   denyReason,
@@ -104,6 +106,12 @@ export interface TrickHostProps {
 }
 
 export function TrickHost({ name, titulo, alto, capacidades }: TrickHostProps) {
+  // Chrome-only addition (language-setting pass): the JSX below reads `t`
+  // for its user-visible strings. Nothing in the effect/protocol logic
+  // beneath this reads it — that code stays untouched on purpose (see the
+  // language-setting agent's report for why: a security fix was in flight
+  // on this same file's internals).
+  const t = useT();
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   const [phase, setPhase] = useState<Phase>("loading");
   const [problems, setProblems] = useState<Problem[]>([]);
@@ -483,9 +491,9 @@ export function TrickHost({ name, titulo, alto, capacidades }: TrickHostProps) {
           (§2.4 — a trick can lie inside its own rectangle, and the
           mitigation is presentation). */}
       <div className="trick-host-chrome">
-        <span className="trick-host-label">mini app</span>
+        <span className="trick-host-label">{t.trickHost.miniAppLabel}</span>
         <span className="muted trick-host-caps">
-          {capKeys.length ? capKeys.join(" · ") : "no capabilities — no bridge"}
+          {capKeys.length ? capKeys.join(" · ") : t.trickHost.noCapabilitiesNoBridge}
         </span>
       </div>
 
@@ -495,10 +503,9 @@ export function TrickHost({ name, titulo, alto, capacidades }: TrickHostProps) {
         </div>
       ) : phase === "navigated-away" ? (
         <div className="trick-host-gone">
-          <p>This trick navigated away from its app.</p>
+          <p>{t.trickHost.navigatedAwayTitle}</p>
           <p className="muted">
-            The panel unmounted it and did not hand the new document a capability port. Reload
-            the page to mount <code>{name}</code> again.
+            {interpolate(t.trickHost.navigatedAwayBodyTemplate, { name: <code>{name}</code> })}
           </p>
         </div>
       ) : (
@@ -518,19 +525,15 @@ export function TrickHost({ name, titulo, alto, capacidades }: TrickHostProps) {
       )}
 
       {phase === "no-bridge" && (
-        <p className="muted trick-host-note">
-          This trick declared no capabilities, so it was mounted with no bridge at all — it can
-          draw, but it cannot read or write anything.
-        </p>
+        <p className="muted trick-host-note">{t.trickHost.noBridgeNote}</p>
       )}
 
       {problems.length > 0 && (
         <div className="trick-host-problems">
           <div className="trick-host-problems-head">
-            <strong>{problems.length}</strong> refused call
-            {problems.length === 1 ? "" : "s"}
+            <strong>{problems.length}</strong> {t.trickHost.refusedCall(problems.length)}
             <button type="button" className="ligero" onClick={() => setProblems([])}>
-              Clear
+              {t.trickHost.clear}
             </button>
           </div>
           <ul>
@@ -543,9 +546,10 @@ export function TrickHost({ name, titulo, alto, capacidades }: TrickHostProps) {
           </ul>
           {problems.some((p) => p.code === "capability_denied") && (
             <p className="muted trick-host-note">
-              <code>capability_denied</code> means the app asked for something its{" "}
-              <code>trick.yaml</code> does not declare. Add the capability to the manifest, or
-              stop the app asking — the panel will not guess.
+              {interpolate(t.trickHost.capabilityDeniedNoteTemplate, {
+                capabilityDenied: <code>capability_denied</code>,
+                trickYaml: <code>trick.yaml</code>,
+              })}
             </p>
           )}
         </div>

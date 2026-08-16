@@ -5,6 +5,8 @@ import type {
   AttachmentMoveResult,
   AttachmentUploadResult,
   GraphResponse,
+  Health,
+  Language,
   NoteDetail,
   NoteMoveResult,
   NoteSummary,
@@ -20,6 +22,43 @@ import type {
  * note also refetches on window focus (TanStack Query default).
  */
 const POLL_MS = 30_000;
+
+/**
+ * `GET /api/health` — the frontend's own bootstrap read of deployment
+ * state. Today the only field the UI itself reacts to is `language`
+ * (i18n/store.ts syncs it on every successful fetch, not just the first —
+ * a settings-endpoint write already updates the store directly, but
+ * another browser tab open on the same panel picks up a language change
+ * from here on its next poll instead of staying stale until reloaded).
+ */
+export function useHealth() {
+  return useQuery({
+    queryKey: ["health"],
+    queryFn: () => fetchJSON<Health>("/api/health"),
+    refetchInterval: POLL_MS,
+  });
+}
+
+/**
+ * The one deployment setting changeable from the UI (owner's ask). Writes
+ * through `POST /api/settings`; the caller (SettingsRoute) applies the
+ * response to the i18n store itself rather than waiting on `useHealth`'s
+ * next poll, so the UI updates immediately instead of up to 30s later.
+ */
+export function useSetLanguage() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (language: Language) =>
+      fetchJSON<{ ok: true; language: Language }>("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ language }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["health"] });
+    },
+  });
+}
 
 export function useNotes() {
   return useQuery({

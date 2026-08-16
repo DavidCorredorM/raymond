@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { attachmentUrl, formatBytes } from "../lib/attachments";
 import { TEXT_PREVIEW_LIMIT_BYTES } from "../lib/preview";
+import { currentMessages } from "../i18n/store";
 
 /**
  * Pulls an attachment down as text, for the two kinds that can't be shown by
@@ -20,7 +21,10 @@ import { TEXT_PREVIEW_LIMIT_BYTES } from "../lib/preview";
 export class TooLargeError extends Error {
   constructor(bytes: number) {
     super(
-      `${formatBytes(bytes)} is over the ${formatBytes(TEXT_PREVIEW_LIMIT_BYTES)} limit for previewing a file as text`,
+      currentMessages().preview.overTextPreviewLimit(
+        formatBytes(bytes),
+        formatBytes(TEXT_PREVIEW_LIMIT_BYTES),
+      ),
     );
     this.name = "TooLargeError";
   }
@@ -29,7 +33,7 @@ export class TooLargeError extends Error {
 async function fetchText(path: string): Promise<string> {
   const res = await fetch(attachmentUrl(path));
   if (!res.ok) {
-    throw new Error(`Reading ${path} failed (${res.status})`);
+    throw new Error(currentMessages().preview.readingFailed(path, res.status));
   }
   const declared = Number(res.headers.get("content-length"));
   if (Number.isFinite(declared) && declared > TEXT_PREVIEW_LIMIT_BYTES) {

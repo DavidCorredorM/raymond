@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { useTricks } from "../api/queries";
 import { TrickIcon } from "../icons/TrickIcon";
+import { useT } from "../i18n/store";
 
 /**
  * Real data from `GET /api/tricks` (tricks-spec.md). Clicking a card
@@ -13,16 +14,17 @@ import { TrickIcon } from "../icons/TrickIcon";
  * logged reason rather than appearing here as something half-rendered.
  */
 export function TricksRoute() {
+  const t = useT();
   const { data: tricks, isLoading, isError, error } = useTricks();
 
   if (isLoading) {
-    return <p className="muted page-scroll">Loading…</p>;
+    return <p className="muted page-scroll">{t.tricks.loading}</p>;
   }
 
   if (isError) {
     return (
       <div className="note-error page-scroll">
-        <p>Could not load tricks.</p>
+        <p>{t.tricks.couldNotLoad}</p>
         <p className="muted">{(error as Error).message}</p>
       </div>
     );
@@ -33,20 +35,12 @@ export function TricksRoute() {
   if (list.length === 0) {
     return (
       <div className="tricks-empty page-scroll">
-        <h1>Tricks</h1>
+        <h1>{t.tricks.title}</h1>
+        <p>{t.tricks.emptyIntro}</p>
         <p>
-          A trick is a small web app that runs over this vault — a checklist, a form, a
-          chart, a drawing pad, a button that runs a script. Arbitrary HTML, CSS and
-          JavaScript in a sandboxed frame with no network of its own, reaching the vault
-          only through the capabilities its manifest declares. This vault doesn&apos;t have
-          any yet.
-        </p>
-        <p>
-          Tricks aren&apos;t built by hand: open Claude Code in this vault
-          and describe what you want tracked — &ldquo;make me a reading
-          list&rdquo;, &ldquo;I want a habit tracker&rdquo; — and the{" "}
-          <code>trick-creator</code> skill writes the folder for you.
-          Nothing to install, no rebuild.
+          {t.tricks.emptyHowToPrefix}
+          <code>trick-creator</code>
+          {t.tricks.emptyHowToSuffix}
         </p>
       </div>
     );
@@ -54,26 +48,28 @@ export function TricksRoute() {
 
   return (
     <div className="tricks-route page-scroll">
-      <h1>Tricks</h1>
-      <p className="muted">
-        {list.length} trick{list.length === 1 ? "" : "s"} found in this vault.
-      </p>
+      <h1>{t.tricks.title}</h1>
+      <p className="muted">{t.tricks.countFound(list.length)}</p>
       <div className="tricks-grid">
-        {list.map((t) => (
-          <Link key={t.name} to={`/tricks/${encodeURIComponent(t.name)}`} className="trick-card">
+        {list.map((trick) => (
+          <Link
+            key={trick.name}
+            to={`/tricks/${encodeURIComponent(trick.name)}`}
+            className="trick-card"
+          >
             <div className="trick-card-icon">
-              <TrickIcon icono={t.icono} size={20} />
+              <TrickIcon icono={trick.icono} size={20} />
             </div>
             <div className="trick-card-body">
-              <div className="trick-card-title">{t.titulo}</div>
-              {t.descripcion && <div className="trick-card-desc muted">{t.descripcion}</div>}
+              <div className="trick-card-title">{trick.titulo}</div>
+              {trick.descripcion && <div className="trick-card-desc muted">{trick.descripcion}</div>}
               {/* What it may touch, before you open it. `capacidades`
                   constrains the browser, not the machine — a scheduled
                   job feeding the same trick is not limited by this
                   (spec §8) — but it is the whole of what the app can
                   reach, and it belongs where someone will read it. */}
               <div className="trick-card-caps muted">
-                {t.capacidades.length ? t.capacidades.join(" · ") : "no capabilities"}
+                {trick.capacidades.length ? trick.capacidades.join(" · ") : t.tricks.noCapabilities}
               </div>
             </div>
           </Link>

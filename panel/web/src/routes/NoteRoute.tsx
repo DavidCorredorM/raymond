@@ -13,6 +13,7 @@ import { useUnsavedChangesGuard } from "../editor/useUnsavedChangesGuard";
 import { ResizablePanel } from "../components/ResizablePanel";
 import { RenameDialog } from "../components/RenameDialog";
 import { Icon } from "../icons/Icon";
+import { useT } from "../i18n/store";
 
 // CodeMirror + its language/autocomplete packages are a meaningful chunk of
 // weight (same reasoning as react-force-graph-2d in App.tsx) and are only
@@ -22,6 +23,7 @@ import { Icon } from "../icons/Icon";
 const NoteEditor = lazy(() => import("../editor/NoteEditor").then((m) => ({ default: m.NoteEditor })));
 
 export function NoteRoute() {
+  const t = useT();
   const params = useParams();
   // Shared with AttachmentRoute since roadmap #9 added a second splat route
   // over the same vault paths — one decoder, not two that can drift.
@@ -103,7 +105,7 @@ export function NoteRoute() {
   }, [mode, path, storeContent]);
 
   if (!path) {
-    return <p className="muted">No note selected.</p>;
+    return <p className="muted">{t.note.noneSelected}</p>;
   }
   // `isPending`, not `isLoading`. In TanStack Query v5 `isLoading` is
   // `isPending && isFetching`, so during the pause between a failed fetch
@@ -112,12 +114,12 @@ export function NoteRoute() {
   // crashed the whole app on `undefined.frontmatter`. `isPending` is true
   // for the entire no-data period, backoff included.
   if (noteQuery.isPending) {
-    return <p className="muted">Loading…</p>;
+    return <p className="muted">{t.note.loading}</p>;
   }
   if (noteQuery.isError) {
     return (
       <div className="note-error">
-        <p>Could not load {path}.</p>
+        <p>{t.note.couldNotLoad(path)}</p>
         <p className="muted">{(noteQuery.error as Error).message}</p>
       </div>
     );
@@ -139,7 +141,7 @@ export function NoteRoute() {
               {mode === "edit" && (
                 <>
                   <span className={"dirty-indicator" + (isDirty ? " dirty" : "")}>
-                    {isDirty ? "Unsaved changes" : "Saved"}
+                    {isDirty ? t.note.unsavedChanges : t.note.saved}
                   </span>
                   <button
                     type="button"
@@ -147,25 +149,25 @@ export function NoteRoute() {
                     onClick={handleSave}
                     disabled={!isDirty || saveNote.isPending}
                   >
-                    {saveNote.isPending ? "Saving…" : "Save"}
+                    {saveNote.isPending ? t.note.saving : t.note.save}
                   </button>
                 </>
               )}
               <button type="button" className="mode-toggle" onClick={() => setMode(mode === "edit" ? "view" : "edit")}>
-                {mode === "edit" ? "View" : "Edit"}
+                {mode === "edit" ? t.note.view : t.note.edit}
               </button>
               <button
                 type="button"
                 className="mode-toggle icon-button"
                 onClick={() => setRenaming(true)}
-                title="Rename this note"
-                aria-label="Rename this note"
+                title={t.note.renameThisNote}
+                aria-label={t.note.renameThisNote}
               >
                 <Icon name="rename" size={15} />
               </button>
             </div>
           </div>
-          {saveError && <p className="note-error">Save failed: {saveError}</p>}
+          {saveError && <p className="note-error">{t.note.saveFailed(saveError)}</p>}
           <div className="note-meta">
             <span title={path}>{path}</span>
             <span> · </span>
@@ -173,7 +175,7 @@ export function NoteRoute() {
           </div>
           {frontmatterEntries.length > 0 && (
             <details className="frontmatter-details">
-              <summary>Frontmatter ({frontmatterEntries.length})</summary>
+              <summary>{t.note.frontmatterHeading(frontmatterEntries.length)}</summary>
               <table className="frontmatter-table">
                 <tbody>
                   {frontmatterEntries.map(([k, v]) => (
@@ -189,7 +191,7 @@ export function NoteRoute() {
         </header>
         {mode === "edit" ? (
           <div className="note-editor-wrap">
-            <Suspense fallback={<p className="muted">Loading editor…</p>}>
+            <Suspense fallback={<p className="muted">{t.note.loadingEditor}</p>}>
               {/*
                 Toggling view/edit fully unmounts and remounts NoteEditor
                 (it's conditionally rendered, not just hidden), which
@@ -227,20 +229,18 @@ export function NoteRoute() {
         defaultWidth={260}
         min={180}
         max={480}
-        ariaLabel="Resize the backlinks panel"
+        ariaLabel={t.note.resizeBacklinksPanel}
       >
         <BacklinksPanel backlinks={note.backlinks} notes={notesQuery.data ?? []} />
       </ResizablePanel>
       {renaming && (
         <RenameDialog
-          title="Rename note"
+          title={t.note.renameDialogTitle}
           initialValue={basenameOf(note.path).replace(/\.md$/i, "")}
           helperText={
             note.backlinks.length > 0
-              ? `This note is linked from ${note.backlinks.length} other note${
-                  note.backlinks.length === 1 ? "" : "s"
-                }; they will be updated automatically.`
-              : "Nothing links to this note yet."
+              ? t.note.linkedFromNotes(note.backlinks.length)
+              : t.note.nothingLinksYet
           }
           validate={(input) => buildNoteRenamePath(note.path, input)}
           onConfirm={handleRename}

@@ -1,12 +1,15 @@
+import { useT } from "../i18n/store";
+
 export function SearchBox({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const t = useT();
   return (
     <input
       type="search"
       className="search-box"
-      placeholder="Search notes…"
+      placeholder={t.searchBox.placeholder}
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      aria-label="Search notes"
+      aria-label={t.searchBox.ariaLabel}
     />
   );
 }

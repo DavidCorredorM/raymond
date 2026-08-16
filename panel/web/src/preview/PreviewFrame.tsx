@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useT } from "../i18n/store";
 
 /**
  * The chrome every preview sits in: one bordered stage that fills whatever
@@ -29,6 +30,7 @@ export function PreviewFrame({
   flush?: boolean;
   children: ReactNode;
 }) {
+  const t = useT();
   const wrapRef = useRef<HTMLElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -64,7 +66,7 @@ export function PreviewFrame({
           {actions}
           {supported && (
             <button type="button" className="preview-button" onClick={toggle}>
-              {isFullscreen ? "Exit full screen" : "Full screen"}
+              {isFullscreen ? t.preview.exitFullScreen : t.preview.fullScreen}
             </button>
           )}
         </span>

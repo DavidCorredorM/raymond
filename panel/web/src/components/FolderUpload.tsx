@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type DragEvent, type ReactNod
 import { ApiError } from "../api/client";
 import { useUploadAttachment } from "../api/queries";
 import { describeUploadError } from "../lib/attachments";
+import { useT } from "../i18n/store";
 
 type Decision = "replace" | "skip";
 
@@ -33,6 +34,7 @@ export function FolderUpload({
   label: string;
   children: ReactNode;
 }) {
+  const t = useT();
   const upload = useUploadAttachment();
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -78,7 +80,7 @@ export function FolderUpload({
         const stop = (message: string) => {
           const left = files.length - i - 1;
           setProgress(null);
-          setError(left > 0 ? `${message} ${left} more file(s) were not uploaded.` : message);
+          setError(left > 0 ? `${message} ${t.folderUpload.moreFilesNotUploaded(left)}` : message);
         };
         track(0);
         try {
@@ -110,7 +112,7 @@ export function FolderUpload({
           if (!alive.current) return;
           stop(
             status === -1
-              ? `Upload of ${file.name} failed: ${(err as Error).message}`
+              ? t.folderUpload.uploadOfFileFailed(file.name, (err as Error).message)
               : describeUploadError(
                   status,
                   file.name,
@@ -123,16 +125,20 @@ export function FolderUpload({
       if (!alive.current) return;
       setProgress(null);
       if (uploaded > 0) {
-        setDone(uploaded === 1 ? `Uploaded to ${label}` : `Uploaded ${uploaded} files to ${label}`);
+        setDone(
+          uploaded === 1
+            ? t.folderUpload.uploadedTo(label)
+            : t.folderUpload.uploadedNTo(uploaded, label),
+        );
       }
     },
-    [askAboutConflict, folder, label, upload],
+    [askAboutConflict, folder, label, t, upload],
   );
 
   useEffect(() => {
     if (!done) return;
-    const t = setTimeout(() => setDone(null), 5000);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setDone(null), 5000);
+    return () => clearTimeout(timer);
   }, [done]);
 
   function onDrop(e: DragEvent) {
@@ -164,8 +170,8 @@ export function FolderUpload({
         <button
           type="button"
           className="folder-upload-button"
-          title={`Upload a file into ${label}`}
-          aria-label={`Upload a file into ${label}`}
+          title={t.folderUpload.uploadInto(label)}
+          aria-label={t.folderUpload.uploadInto(label)}
           onClick={() => inputRef.current?.click()}
         >
           ＋
@@ -184,19 +190,23 @@ export function FolderUpload({
       </div>
       {progress && (
         <p className="folder-upload-status" role="status">
-          {progress.total > 1 && `(${progress.index}/${progress.total}) `}
-          Uploading {progress.file} — {Math.round(progress.fraction * 100)}%
+          {progress.total > 1 && t.folderUpload.progressPrefix(progress.index, progress.total)}
+          {t.folderUpload.uploadingStatus(progress.file, Math.round(progress.fraction * 100))}
           <progress className="folder-upload-bar" max={1} value={progress.fraction} />
         </p>
       )}
       {conflict && (
-        <div className="folder-upload-conflict" role="alertdialog" aria-label="File already exists">
-          <span>{conflict} already exists here — replace it?</span>
+        <div
+          className="folder-upload-conflict"
+          role="alertdialog"
+          aria-label={t.folderUpload.fileExistsAriaLabel}
+        >
+          <span>{t.folderUpload.fileExistsQuestion(conflict)}</span>
           <button type="button" onClick={() => decide.current?.("replace")}>
-            Replace
+            {t.folderUpload.replace}
           </button>
           <button type="button" onClick={() => decide.current?.("skip")}>
-            Skip
+            {t.folderUpload.skip}
           </button>
         </div>
       )}

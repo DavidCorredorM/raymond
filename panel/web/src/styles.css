@@ -1625,3 +1625,35 @@ a {
     padding: 12px 18px;
   }
 }
+
+/* Settings route — one fieldset today (language), styled like the rest of
+   the app's form chrome (dialog-label's weight/size) rather than inventing
+   a new pattern for a page that may grow more settings later. */
+.settings-route {
+  max-width: 640px;
+}
+
+.settings-language {
+  margin: 20px 0;
+  padding: 16px 20px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.settings-language legend {
+  padding: 0 6px;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.settings-language-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  cursor: pointer;
+}
+
+.settings-language-option input {
+  accent-color: var(--accent);
+}

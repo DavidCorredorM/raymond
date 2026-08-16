@@ -5,6 +5,18 @@
  * package to import from.
  */
 
+/** Mirrors panel/server/src/config.ts's `Language` — the two the owner asked for, English default. */
+export type Language = "en" | "es";
+
+/** GET /api/health — the frontend's i18n store (i18n/store.ts) reads `language` off this on boot. */
+export interface Health {
+  ok: true;
+  vault: string;
+  notes: number;
+  attachments: number;
+  language: Language;
+}
+
 /** GET /api/notes item — no body, enough for the tree/search/dashboards. */
 export interface NoteSummary {
   path: string;

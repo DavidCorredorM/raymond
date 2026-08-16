@@ -1,4 +1,5 @@
 import { Icon } from "../icons/Icon";
+import { useT } from "../i18n/store";
 
 /**
  * Owner's ask #6: "a quick way into Claude Code on the web... the owner
@@ -13,16 +14,17 @@ import { Icon } from "../icons/Icon";
  * than an icon-only button a first-time user has to guess at.
  */
 export function ClaudeCodeLauncher() {
+  const t = useT();
   return (
     <a
       href="https://claude.ai/code"
       target="_blank"
       rel="noopener noreferrer"
       className="claude-code-launcher"
-      title="Open Claude Code in a new tab to start a chat"
+      title={t.claudeLauncher.title}
     >
       <Icon name="external-link" size={16} />
-      <span>Claude Code</span>
+      <span>{t.claudeLauncher.label}</span>
     </a>
   );
 }

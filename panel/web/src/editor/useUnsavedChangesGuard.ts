@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useBlocker } from "react-router-dom";
+import { currentMessages } from "../i18n/store";
 
 /**
  * Warns before losing an in-progress edit, two ways:
@@ -23,7 +24,7 @@ export function useUnsavedChangesGuard(isDirty: boolean) {
 
   useEffect(() => {
     if (blocker.state !== "blocked") return;
-    const leave = window.confirm("You have unsaved changes to this note. Leave without saving?");
+    const leave = window.confirm(currentMessages().unsavedGuard.confirmMessage);
     if (leave) blocker.proceed();
     else blocker.reset();
   }, [blocker]);

@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { useGraph } from "../api/queries";
 import { noteHref } from "../lib/notePath";
 import { readGraphPalette, type GraphPalette } from "../lib/graphPalette";
+import { useT } from "../i18n/store";
 
 interface GraphNodeDatum {
   id: string;
@@ -129,6 +130,7 @@ function endpointId(end: LinkObject<GraphNodeDatum>["source"]): string | undefin
  * current-note-neighborhood filter. That's explicitly follow-up work.
  */
 export function GraphRoute() {
+  const t = useT();
   const { data, isLoading, isError, error } = useGraph();
   const navigate = useNavigate();
   const observerRef = useRef<ResizeObserver | null>(null);
@@ -232,10 +234,10 @@ export function GraphRoute() {
     [hoveredId],
   );
 
-  if (isLoading) return <p className="muted page-scroll">Loading graph…</p>;
+  if (isLoading) return <p className="muted page-scroll">{t.graph.loading}</p>;
   if (isError) return <p className="note-error page-scroll">{(error as Error).message}</p>;
   if (graphData.nodes.length === 0) {
-    return <p className="muted page-scroll">No notes to graph yet — add some [[links]] between notes.</p>;
+    return <p className="muted page-scroll">{t.graph.noNotes}</p>;
   }
 
   return (

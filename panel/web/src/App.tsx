@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import { AppShell } from "./routes/AppShell";
@@ -10,6 +10,9 @@ import { HealthRoute } from "./routes/HealthRoute";
 import { HomeRoute } from "./routes/HomeRoute";
 import { TricksRoute } from "./routes/TricksRoute";
 import { TrickDetailRoute } from "./routes/TrickDetailRoute";
+import { SettingsRoute } from "./routes/SettingsRoute";
+import { useHealth } from "./api/queries";
+import { useI18nStore } from "./i18n/store";
 
 // react-force-graph-2d pulls in d3-force and pushes the main bundle past
 // the 500kB warning threshold on its own; it's also only needed on one
@@ -62,13 +65,42 @@ const router = createBrowserRouter([
       },
       { path: "tricks", element: <TricksRoute /> },
       { path: "tricks/:name", element: <TrickDetailRoute /> },
+      { path: "settings", element: <SettingsRoute /> },
     ],
   },
 ]);
 
+/**
+ * Reads `GET /api/health`'s `language` field into the i18n store
+ * (i18n/store.ts) on boot and on every poll — not just once, so a second
+ * browser tab open on the same panel picks up a language change made from
+ * Settings in the first tab without needing a manual reload. Renders
+ * nothing; `useHealth` already drives the rest of the app's "is the
+ * server up" signal, this just also listens to one field of it.
+ *
+ * Also mirrors the value onto `<html lang>` — index.html ships with a
+ * hardcoded `lang="en"` (it has to ship with *something*, and English
+ * matches the server's own default), which is otherwise the one piece of
+ * language state in this app that a pure client-side dictionary swap
+ * never touches. Screen readers and the browser's own "translate this
+ * page?" prompt both read that attribute, not the DOM text.
+ */
+function LanguageSync() {
+  const { data } = useHealth();
+  const setLanguage = useI18nStore((s) => s.setLanguage);
+  useEffect(() => {
+    if (data?.language) setLanguage(data.language);
+  }, [data?.language, setLanguage]);
+  useEffect(() => {
+    if (data?.language) document.documentElement.lang = data.language;
+  }, [data?.language]);
+  return null;
+}
+
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
+      <LanguageSync />
       <RouterProvider router={router} />
     </QueryClientProvider>
   );

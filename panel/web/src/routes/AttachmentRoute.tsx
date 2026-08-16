@@ -7,6 +7,7 @@ import { buildAttachmentRenamePath } from "../lib/rename";
 import { AttachmentPreview } from "../preview/AttachmentPreview";
 import { RenameDialog } from "../components/RenameDialog";
 import { Icon } from "../icons/Icon";
+import { useT } from "../i18n/store";
 
 /**
  * The non-`.md` counterpart of NoteRoute (roadmap #9). Previously this was
@@ -23,6 +24,7 @@ import { Icon } from "../icons/Icon";
  * literally half the complaint.
  */
 export function AttachmentRoute() {
+  const t = useT();
   const params = useParams();
   const path = decodeRoutePath(params["*"]);
   const navigate = useNavigate();
@@ -47,7 +49,7 @@ export function AttachmentRoute() {
   }
 
   if (!path) {
-    return <p className="muted">No file selected.</p>;
+    return <p className="muted">{t.attachment.noneSelected}</p>;
   }
 
   return (
@@ -57,14 +59,14 @@ export function AttachmentRoute() {
           <h1>{name}</h1>
           <div className="note-editor-toolbar">
             <a className="attachment-download" href={attachmentDownloadUrl(path)}>
-              Download
+              {t.attachment.download}
             </a>
             <button
               type="button"
               className="mode-toggle icon-button"
               onClick={() => setRenaming(true)}
-              title="Rename this file"
-              aria-label="Rename this file"
+              title={t.attachment.renameThisFile}
+              aria-label={t.attachment.renameThisFile}
             >
               <Icon name="rename" size={15} />
             </button>
@@ -82,16 +84,9 @@ export function AttachmentRoute() {
           )}
         </div>
         {isError && (
-          <p className="note-error">
-            Could not load the attachment index: {(error as Error).message}. The preview below
-            still works if the file is there.
-          </p>
+          <p className="note-error">{t.attachment.couldNotLoadIndex((error as Error).message)}</p>
         )}
-        {!isLoading && !isError && !meta && (
-          <p className="muted">
-            Not in the vault's attachment index — it may have been moved or deleted.
-          </p>
-        )}
+        {!isLoading && !isError && !meta && <p className="muted">{t.attachment.notInIndex}</p>}
       </header>
       {/* Remounted per path so a viewer's local state (zoom, source toggle,
           a failed decode) never carries across to the next file. */}
@@ -100,9 +95,9 @@ export function AttachmentRoute() {
       </div>
       {renaming && (
         <RenameDialog
-          title="Rename file"
+          title={t.attachment.renameDialogTitle}
           initialValue={name}
-          helperText="Files aren't referenced by [[links]] the way notes are, so nothing else needs updating."
+          helperText={t.attachment.filesNotLinked}
           validate={(input) => buildAttachmentRenamePath(path, input)}
           onConfirm={handleRename}
           onClose={() => setRenaming(false)}
