@@ -2382,3 +2382,94 @@ Chrome already renders the strict-authorized ones, since the fallback
 changes only whether a response is sent, never what's in it — carried in
 §14 as the same class of gap the original `Sec-Fetch` gate work already
 had for Firefox and Safari.
+
+## [2026-08-16] Palette swapped again: desert Americana out, "Signal" cool indigo in
+
+The owner tried the desert palette live and didn't like it: "white ugly
+colors... find another palette, one that's a bit more alive." Four
+options went into a comparison artifact; the owner picked "Signal" —
+described as reading "like a tool you trust with real work." This entry
+is the swap, not a second palette redesign — same token names throughout,
+`styles.css`'s file-level comment carries the new provenance and the AA
+fix history the way it carried the desert palette's.
+
+### The eight mockup values, plus what the mockup didn't specify
+
+The comparison artifact gave eight values (background, raised surface,
+text, muted text, border, accent, a second accent, and text-on-accent)
+for light and dark. Mapped onto the existing tokens rather than inventing
+new ones: `--bg`/`--bg-raised`/`--border`/`--fg`/`--fg-muted`/`--accent`/
+`--accent-contrast` took the mockup's values directly; the mockup's
+second accent became `--accent-hover`, reusing the token that already
+existed for "a second shade of the primary." `--bg-sunken`,
+`--border-strong` and `--accent-wash` — surfaces the mockup never showed,
+because it was a chrome comparison, not a full app — extend the same two
+hues along lightness, same method the desert palette used for its own
+derived tokens.
+
+The status/badge colours (`--broken`, `--warning`, `--ok`, the six
+`--kind-*` file-type badges) aren't in any comparison mockup either:
+conventional red/amber/green for status, violet and teal added alongside
+the indigo accent for the badges, chosen to sit next to Signal's blues
+without fighting them. Same reuse pattern the desert palette had —
+`--kind-pdf`/`--kind-web`/`--kind-image` alias `--broken`/`--warning`/
+`--ok` rather than getting independent hues.
+
+### The audit found five misses, all on the same surface
+
+The mockup's values were picked for visual character in a quick
+comparison, not checked. Running `contrast.test.ts` against them as
+given found five light-theme failures — `--accent`, `--ok`,
+`--kind-image`, `--kind-sheet` and `--kind-media` all short of 4.5:1 on
+`--bg-sunken`, the deepest light surface, plus `--kind-sheet` short on
+`--bg` too. Same failure shape as the desert palette's Muted Olive: the
+deepest surface is where a mid-tone colour runs out of contrast first.
+Fixed the same way — each token darkened along its own hue by binary
+search until it cleared 4.55:1 (a hair past the 4.5:1 floor, for rounding
+headroom), nothing else touched. `--accent` moved from the mockup's
+`#5b5bf0` to `#5555ef` — visually indistinguishable, still the same
+indigo. `--kind-sheet` got its own darker blue (`#1a60eb`) rather than
+reusing `--accent-hover`, since `--accent-hover` only has to clear 3:1 as
+`--focus`-adjacent chrome, not 4.5:1 as body text — the two roles need
+different amounts of headroom even though they share a hue. Dark theme
+cleared AA on every pair as given, no adjustment needed. Lowest pair in
+the shipped set: 4.55:1, light `--accent`/`--ok`/`--kind-media` on
+`--bg-sunken`.
+
+`lib/graphPalette.ts`'s `FALLBACK_GRAPH_PALETTE` — the canvas colours
+used before `getComputedStyle` resolves, or in a document-less test —
+updated to the new light-theme `--accent`/`--accent-hover`/`--fg`/
+`--fg-muted` values; `readGraphPalette()` itself needed no change, it was
+already reading tokens live off the document rather than a second copy.
+
+Re-grepped `panel/web/src` for hex literals outside the token system —
+the leak this app found once before with the file-type badges. Still
+clean: nothing outside `styles.css`, `graphPalette.ts`'s fallback
+constant, and the two `*.test.ts` files that intentionally hold hex
+literals as fixtures for testing the maths, not as a second copy of the
+real palette.
+
+### Verified
+
+Real, this session: `npm test` in `panel/web`, 232 cases including the
+full contrast matrix, clean. `npm run build`, clean, and the shipped
+`dist/assets/index-*.css` grepped directly for `--accent:#5555ef` and
+`--bg:#f7f7fb` to confirm the built artifact — not just the source file —
+carries the new values. Built `panel/server` and ran it against a scratch
+vault (two linked notes); indexed clean, served the freshly built
+frontend, and the CSS `curl`'d back off the running server at
+`/assets/index-*.css` carried the same new hex values as the build
+output. Every foreground/background pair's real ratio, both themes,
+pulled from `contrast.ts` reading the actual shipped `styles.css` (not a
+copy): light `--fg` 15.94–17.04:1, `--fg-muted` 4.98–5.84:1, `--accent`
+4.55–5.34:1, `--broken` 4.90–5.75:1, `--warning` 4.62–5.42:1, `--ok`/
+`--kind-image` 4.57–5.36:1, `--kind-sheet` 4.57–5.36:1, `--kind-doc`
+5.87–6.89:1, `--kind-web` 4.62–5.42:1, `--kind-media` 4.55–5.34:1,
+`--accent-contrast`-on-`--accent` 5.34:1, `--focus` 4.55–5.00:1 (3:1
+floor); dark theme 5.28:1 and up across every pair.
+
+**Not verified: how it actually looks.** No Chrome extension connection
+this session — `tabs_context_mcp` returned "Browser extension is not
+connected" against the running scratch-vault server, the same gap this
+session's environment had throughout. The numbers above and the shipped
+hex values are real; nobody has looked at the rendered page.
