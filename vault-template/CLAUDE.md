@@ -225,7 +225,7 @@ from one folder index to the other, and rolls back if any part fails.
 
 ## Skills
 
-Seven, in `.claude/skills/`. Claude Code loads their descriptions at
+Eight, in `.claude/skills/`. Claude Code loads their descriptions at
 startup and fires them when a task matches:
 
 | Skill | Fires when |
@@ -237,6 +237,7 @@ startup and fires them when a task matches:
 | `migrate-notes` | bringing an existing vault in |
 | `trick-creator` | the user wants a UI — a tracker, a form, a chart, a button that runs something |
 | `schedule-job` | the user wants something to run on a schedule, or asks what's scheduled |
+| `update-raymond` | the user wants to check for or install an update, or asks what's scheduled to auto-update |
 
 Keep the total under about a dozen. Every skill costs context whether it
 is used or not.

@@ -2093,3 +2093,216 @@ sessions already carry for the tricks work).
   document on click, real additional scope.
 - **The tar-deploy orphaned-file gap above** — worked around by hand
   this time, not fixed in the documented procedure.
+
+## [2026-08-15] Update distribution: a manifest, a puller, and a sync that runs inside the vault's own repo
+
+`docs/roadmap.md` §13, written earlier today when the base repo went
+public, was the spec. Two problems that only look similar: pulling
+`~/raymond` forward is a normal git fast-forward; syncing
+`vault-template/` into `~/raymond-brain` is not, because the vault has
+no git ancestry to the base package and holds a mix of files nobody
+should ever customize and files that are a deployment's own the moment
+they're copied in. Getting that distinction wrong is exactly how a
+future update silently overwrites someone's edited `CLAUDE.md` — which
+is why the manifest comes before the script that reads it.
+
+### The manifest names every path, including today's new ones
+
+`vault-template/UPDATE-MANIFEST.md`. Roadmap §13 named the obvious
+examples (`_tools/*`, the base skills, `vault-steward` as machinery;
+`CLAUDE.md`, `index.md`, folder indexes, `panel/home.md`, `_templates/*`
+as seed) but the tree has grown since those examples were written —
+`conventions.md`, `.claude/tricks/_plantillas/`,
+`.claude/tricks/vault-steward/`, `.claude/jobs/index.md` and
+`.claude/tricks/index.md` all needed a first classification, not just a
+pattern match against the existing examples. The test used throughout:
+**edited in place, per-deployment, is seed; copied-from-and-then-edited
+is machinery** — it's why `_templates/*` (edited in place, per
+`conventions.md` §3's field-rename instructions) and
+`.claude/tricks/_plantillas/` (copied out, never edited in place, per
+its own `index.md`) land on opposite sides despite looking similar.
+
+Two things came up that the manifest says plainly rather than solving
+silently, because guessing either one is exactly the failure mode
+roadmap §13 warned about:
+
+- **`conventions.md` is seed, but its "The numbers" table is duplicated
+  data with `_tools/steward.py`'s header constants** (the document says
+  so itself: "change them there and… together"). `steward.py` is
+  machinery and can be silently updated; `conventions.md` never is. If
+  the base package ever changes a default and a deployment never
+  touched either file, the sync closes the machinery half and leaves
+  the seed half describing the old number — flagged in the manifest as
+  a real gap the seed-diff report is the only way to close.
+- **`steward/index.md` and `steward/historial/index.md` are neither
+  machinery nor seed.** Both are shipped as install-time stubs and then
+  regenerated wholesale by `_tools/steward.py check` on every real run
+  — comparing them to the base package would either erase live findings
+  (as machinery) or report meaningless noise every single run (as
+  seed). A third "excluded" bucket in the manifest, checked once nobody
+  had built anything into that gap yet.
+
+### Conflict detection: a stored hash, not git archaeology
+
+The part the brief called out by name as the one most likely to be
+gotten wrong. `.claude/template-sync.md` — a note under `.claude/`,
+following the same shape `.claude/jobs/*.md` already established
+(frontmatter matching this vault's schema plus an English `sync:`
+block, an append-only `## Runs` table) — records a content hash per
+machinery path at the moment it was last synced. Every run computes
+three hashes (baseline, this vault's copy now, the base package's copy
+now) and only one of six combinations is genuinely ambiguous: both
+changed since the baseline. Everything else resolves without a human —
+full table in `scripts/sync-vault-template.py`'s module docstring.
+
+Git history was the other option on the table (roadmap §13 raises both)
+and was rejected for this vault specifically: `steward.py move` rewrites
+files outside a plain edit, and "does this content match some commit
+this vault ever synced from" needs a full history walk per path, per
+run, forever. A stored hash is one `sha1()` call and doesn't care how
+the local copy came to be what it is.
+
+When both sides changed, the conflict becomes a card in `steward/`,
+`tipo: hallazgo`, in exactly the shape `_tools/steward.py`'s `Finding`
+class already writes — same five answer fields
+(`estado`/`respuesta`/`decision`/`respondido`/`actualizado`), because
+those are literally what the `vault-steward` trick's
+`vault.write.campos` already permits. A template-sync conflict card
+therefore renders in the existing steward panel UI with zero changes to
+that trick — not planned, just fell out of matching the existing shape
+instead of inventing a new one.
+
+### Two real bugs, both caught by the scratch verification, neither by reading the code
+
+1. **A timestamp-only rewrite made every run commit something, forever.**
+   `.claude/template-sync.md`'s frontmatter always stamped the current
+   time into `last_synced`, so even a run that changed nothing produced
+   a one-line diff and a commit — silently failing the exact
+   requirement the brief asked to verify ("run twice in a row with no
+   upstream changes — the second run should be a clean no-op"). Fixed by
+   only rewriting the marker when the baseline table itself changed or a
+   conflict card's answer was carried out; a run with nothing to do now
+   leaves the file untouched.
+2. **A failed panel build was never retried**, because a successful
+   `git merge --ff-only` already leaves `HEAD` fast-forwarded — so the
+   *next* run's "anything new to pull?" check says no, and the old
+   script exited early without ever looking at the build again. Fixed
+   with a small marker (`~/.raymond/last-build-commit`, deliberately
+   outside `~/raymond` itself so nothing untracked ever sits in that
+   clone) recording the last commit panel/ was *successfully* built at;
+   the rebuild check now compares against that, not against "did
+   anything get pulled this run." Caught the first fix attempt too: the
+   marker has to be written to disk the moment it's first assumed, not
+   just held in a shell variable, or a failure on the very first run
+   loses the one reference point that made the retry possible at all.
+
+Neither bug would have been obvious from reading either script in
+isolation — both are two-runs-apart failures, which is exactly why the
+brief's "run the full loop twice in a row" step existed rather than
+being optional.
+
+### Verified against a scratch setup; not against a real deployment
+
+A bare repo standing in for the public remote, a scratch `~/raymond`
+cloned from it, a scratch `~/raymond-brain` seeded from a copy of
+`vault-template/` as if from an earlier version, its own git repo. No
+real deployment was available to risk (Angela's `~/raymond` is still
+tar-deployed with no git ancestry to pull against at all — see
+`deployments/angela.md`, and roadmap §13's own last bullet, which this
+work does not attempt).
+
+Observed, by actually running it:
+
+- A machinery change in the "upstream" bare repo lands in the scratch
+  vault as a real, reviewable commit.
+- A seed change upstream leaves the deployment's copy byte-identical
+  (checked directly, not just "the script didn't complain") and is
+  reported, not written.
+- A machinery file edited locally, then changed upstream too: the local
+  edit survives untouched, a card appears in `steward/` with both diffs
+  quoted, and answering it with `decision: aplicar` / `respuesta: "take
+  theirs"` overwrites correctly on the next run — `descartar` and "keep
+  mine" both correctly leave the file alone and re-baseline so the same
+  difference doesn't get carded again.
+- A real `git fetch` + `git merge --ff-only` against the scratch bare
+  repo; rebuild skipped when nothing under `panel/` changed; rebuild +
+  restart triggered when it did; a build failure leaves the *old* build
+  serving and does not restart into it, and — after the fix above — a
+  retry on the next run (even with nothing new to pull) actually
+  retries.
+- `~/raymond` with a local commit the remote doesn't have: the script
+  stops loudly (exit 2), names the exact `git log` command to inspect
+  it, and touches nothing. `HEAD` unchanged, confirmed.
+- Both scripts run twice in a row with nothing changed between runs:
+  the second run is a clean no-op — `nothing to commit` from the vault
+  sync, `already up to date… nothing owed to the build` from the
+  app-code puller — not an error, not a spurious diff.
+- `--dry-run` on both scripts: correct report, `git status` and `HEAD`
+  unchanged, no marker files written.
+
+`assumed:`, not observed — no Linux box was available in this pass:
+
+- `flock` and `systemctl --user` behave as `schedule-job`'s own runner
+  skeleton documents. macOS (this pass's only environment) has neither;
+  both were shimmed for the scratch run to exercise everything else,
+  and the real lock/restart calls were reviewed against
+  `schedule-job`'s own documented pattern rather than executed for
+  real. First real install should verify §6 of the `schedule-job` skill
+  itself (`env -i`, watch it fire once) the way that skill already asks
+  for.
+- `npm install` / `npx tsc` / `npm run build` succeeding against the
+  real `panel/server` and `panel/web` — stubbed for the scratch run
+  (no network, no real dependency tree) specifically so the *branching
+  logic* (rebuild-or-not, restart-or-not, retry-or-not) could be tested
+  fast and repeatably. The commands themselves are copied verbatim from
+  README's already-verified "Getting a deployment running" section, not
+  invented here.
+
+### What the skill adds on top of the two scripts
+
+`vault-template/.claude/skills/update-raymond/`. Modeled on `daily-log`
+for shape and `schedule-job`/`vault-steward` for how a script-backed
+skill hands its unattended half to `schedule-job` rather than
+scheduling itself. A `--dry-run` preview on both scripts, offered
+explicitly to a non-coder audience before committing to a real run —
+the same instinct as the tricks work earlier in the session that put
+`Nothing here yet` and honest incomplete-state language directly in
+front of a user rather than a raw error. Cadence picked as daily,
+`kind: script` (both underlying scripts are fully deterministic, so
+there's no judgment step that would justify paying for an agent run) —
+reasoning for daily specifically, rather than assuming it, is written
+in the skill itself.
+
+### Left undone
+
+- **`.claude/jobs/vault-steward.prompt.md`-style copies of machinery
+  briefs go stale silently.** `.claude/skills/vault-steward/brief.md` is
+  machinery and syncs; the copy `schedule-job` writes into
+  `.claude/jobs/` at install time does not, because that path is
+  deployment state the moment it's written and this manifest doesn't
+  enumerate job names. Written down in `UPDATE-MANIFEST.md`'s own "Out
+  of scope" section rather than solved — closing it means the sync
+  reasoning about job-specific paths it was never meant to touch.
+- **`.claude/tricks/index.md` won't gain a row for a second default
+  trick automatically**, if the base package ever ships one — it's seed
+  (a deployment's own trick list), so the sync never writes it, even
+  for the one row that would document base-package machinery. Flagged
+  in the manifest; the seed-diff report is the only mechanism that
+  surfaces it.
+- **No cap on conflict cards.** `_tools/steward.py` caps itself at 25
+  open cards; the sync script doesn't, on the assumption that machinery
+  conflicts should be rare in real use (a deployment editing `_tools/*`
+  in place is already an edge case). Worth revisiting if a real
+  deployment proves that assumption wrong.
+- **`bootstrap.sh` no longer blind-copies `UPDATE-MANIFEST.md` into a
+  fresh vault** — caught while seeding the very first scratch vault for
+  this pass (its own `cp -rn` would otherwise have shipped a file the
+  manifest's own header says should never leave the base checkout).
+  One-line fix, `scripts/bootstrap.sh`; not re-verified against a real
+  bootstrap run, only against the scratch vault seed step this pass
+  already needed.
+- **Angela's `~/raymond` is still untouched** — tar-deployed, no git
+  ancestry, exactly as roadmap §13's last bullet described before this
+  work started. Converting her specifically is out of scope here, same
+  split as her SIGRA skills (roadmap §9): tracked in her own
+  `deployments/angela.md`, not the base package.

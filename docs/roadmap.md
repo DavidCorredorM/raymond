@@ -368,8 +368,39 @@ tree, removed the five orphans); the fix that doesn't need repeating is
 the puller below, or at minimum `rsync --delete` in place of `tar` in
 the documented procedure until the puller exists.
 
-**What does not exist yet — this section is the spec for it, not a
-built feature:**
+**Built, later the same day (2026-08-15).** Everything below this line
+was the spec; nothing in it needed correcting — every path this section
+named an example for (`_tools/*`, the base skills, `vault-steward`
+itself as machinery; `CLAUDE.md`, `index.md`, folder indexes,
+`panel/home.md`, `_templates/*` as seed) landed exactly as described.
+What's real now:
+
+- `vault-template/UPDATE-MANIFEST.md` — the manifest, classifying every
+  path in today's `vault-template/` tree (not just this section's
+  examples — `conventions.md`, `.claude/tricks/_plantillas/`,
+  `.claude/tricks/vault-steward/`, `.claude/jobs/index.md` and
+  `.claude/tricks/index.md` needed a first classification, and two paths
+  (`steward/index.md`, `steward/historial/index.md`) turned out to be
+  neither machinery nor seed — see the manifest's own "Excluded" section).
+- `scripts/update-raymond.sh` — the app-code puller, fast-forward only,
+  rebuilding and restarting only when `panel/` actually moved.
+- `scripts/sync-vault-template.py` — the vault-template sync, running
+  inside the vault's own git repo, one commit per real change. Conflict
+  detection is a stored content hash per machinery path
+  (`.claude/template-sync.md`), not git archaeology — the module
+  docstring explains why history-walking was considered and rejected.
+- `vault-template/.claude/skills/update-raymond/` — the skill, wired to
+  `schedule-job` (daily, `kind: script`, no new scheduler).
+
+Verified against a scratch bare-remote + scratch `~/raymond` + scratch
+`~/raymond-brain`, not against a real deployment (none was available to
+risk) — see `docs/log.md`'s entry the same day for exactly what that
+covered, including two real bugs the scratch run caught before either
+script shipped (a spurious commit from a timestamp-only marker rewrite,
+and a failed-build retry that silently never retried).
+
+**What does not exist yet — the rest of this section is the spec that
+was built from, kept as the historical record:**
 
 - A skill (`update-raymond` or similar, base package) plus a script
   under `scripts/` that: `git fetch`s the public remote, fast-forwards

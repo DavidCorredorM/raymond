@@ -151,6 +151,13 @@ else
   SKEL="$(cd "$(dirname "${BASH_SOURCE[0]}")/../vault-template" && pwd)"
   cp -rn "$SKEL"/. "$VAULT_DIR"/ 2>/dev/null || true
 
+  # UPDATE-MANIFEST.md classifies vault-template/ paths for
+  # scripts/sync-vault-template.py and is read straight from the base
+  # checkout every run — it documents the sync, it is not vault content,
+  # and a copy of it in the vault would immediately go stale the moment
+  # the base package's own copy changes (docs/roadmap.md §13).
+  rm -f "$VAULT_DIR/UPDATE-MANIFEST.md"
+
   # AppleDouble droppings, if this repo was copied off a Mac with tar/scp.
   # Harmless but they end up committed and clutter every listing.
   find "$VAULT_DIR" -name '._*' -delete 2>/dev/null || true
