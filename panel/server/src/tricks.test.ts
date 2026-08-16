@@ -6,7 +6,9 @@ import { join } from "node:path";
 import {
   appRequestGate,
   appContentType,
+  fallbackAppGate,
   listTricks,
+  mintMountToken,
   readTrickManifest,
   resolveAppFile,
   TrickError,
@@ -182,4 +184,93 @@ test("app.alto defaults, and app: with nothing in it is still an app trick", asy
   assert.equal(manifest.app.entrada, "index.html");
   assert.equal(manifest.app.alto, 480);
   assert.deepEqual(manifest.capacidades, {});
+});
+
+// ---------------------------------------------------------------------------
+// Fallback for a browser that sends no `Sec-Fetch-*` at all — found live,
+// 2026-08-15 (`fallbackAppGate`'s own comment has the full reasoning,
+// including why a cookie was measured against a real sandboxed iframe and
+// rejected). These cover the pure token/window lifecycle; the HTTP route and
+// an actual hostile browser are attacked separately (tricks-spec.md §10).
+// ---------------------------------------------------------------------------
+
+test("a fresh token authenticates the entrada exactly once", async () => {
+  const dir = await scratchVault({ x: V2_MANIFEST });
+  const now = 1_000_000;
+  const token = await mintMountToken(dir, "x", now);
+  assert.equal(fallbackAppGate("x", "index.html", true, token, now + 1).ok, true);
+  // Spent — a second load with the same token fails, even immediately after.
+  assert.equal(fallbackAppGate("x", "index.html", true, token, now + 2).ok, false);
+});
+
+test("a token minted for one trick does not authenticate another trick's entrada", async () => {
+  const dir = await scratchVault({ a: V2_MANIFEST, b: V2_MANIFEST });
+  const now = 1_000_000;
+  const token = await mintMountToken(dir, "a", now);
+  assert.equal(fallbackAppGate("b", "index.html", true, token, now + 1).ok, false);
+  // The refusal above must not have spent it — "a"'s real token still works.
+  assert.equal(fallbackAppGate("a", "index.html", true, token, now + 2).ok, true);
+});
+
+test("an expired token fails, and so does a token that was never minted", async () => {
+  const dir = await scratchVault({ x: V2_MANIFEST });
+  const now = 1_000_000;
+  const token = await mintMountToken(dir, "x", now);
+  assert.equal(fallbackAppGate("x", "index.html", true, token, now + 20_001).ok, false);
+  assert.equal(fallbackAppGate("x", "index.html", true, "not-a-real-token", now + 1).ok, false);
+  assert.equal(fallbackAppGate("x", "index.html", true, undefined, now + 1).ok, false);
+});
+
+test("a successful entrada opens a subresource window for that trick, and only that trick", async () => {
+  const dir = await scratchVault({ a: V2_MANIFEST, b: V2_MANIFEST });
+  const now = 1_000_000;
+  const token = await mintMountToken(dir, "a", now);
+  assert.equal(fallbackAppGate("a", "index.html", true, token, now).ok, true);
+  assert.equal(fallbackAppGate("a", "app.js", false, undefined, now + 1).ok, true);
+  // "b" never had its own entrada served through this mechanism, so it has
+  // no window — regardless of extension, and regardless of "a"'s window
+  // being open at the same moment.
+  assert.equal(fallbackAppGate("b", "app.js", false, undefined, now + 1).ok, false);
+});
+
+test("the subresource window closes after its TTL", async () => {
+  const dir = await scratchVault({ x: V2_MANIFEST });
+  const now = 1_000_000;
+  const token = await mintMountToken(dir, "x", now);
+  assert.equal(fallbackAppGate("x", "index.html", true, token, now).ok, true);
+  assert.equal(fallbackAppGate("x", "app.js", false, undefined, now + 19_999).ok, true);
+  assert.equal(fallbackAppGate("x", "app.js", false, undefined, now + 20_001).ok, false);
+});
+
+test("html, htm, svg and xml stay refused in the fallback window even with a real, currently-open window", async () => {
+  // Only the manifest's declared entrada may ever be served this way, and
+  // only once per token. Everything that can carry and run its own script
+  // when navigated to directly — html, svg, xml — is excluded from the
+  // window path entirely, closing the "one file over from the one the
+  // token actually guards" residual risk (fallbackAppGate's own comment).
+  const dir = await scratchVault({ x: V2_MANIFEST });
+  const now = 1_000_000;
+  const token = await mintMountToken(dir, "x", now);
+  assert.equal(fallbackAppGate("x", "index.html", true, token, now).ok, true);
+  for (const rel of ["other.html", "other.htm", "logo.svg", "data.xml", "readme.pdf"]) {
+    assert.equal(
+      fallbackAppGate("x", rel, false, undefined, now + 1).ok,
+      false,
+      `${rel} must not be servable through the fallback window`,
+    );
+  }
+  // The window is real and open — an allowed extension still works.
+  assert.equal(fallbackAppGate("x", "app.js", false, undefined, now + 1).ok, true);
+});
+
+test("the extension allowlist alone does not bypass the window check", () => {
+  for (const rel of ["app.js", "mod.mjs", "style.css", "data.json", "logo.png", "clip.mp4"]) {
+    assert.equal(fallbackAppGate("nonexistent-trick", rel, false, undefined).ok, false, rel);
+  }
+});
+
+test("minting fails for a trick that doesn't currently validate — same masking the app route uses", async () => {
+  const dir = await scratchVault({ viejo: V1_MANIFEST });
+  await assert.rejects(() => mintMountToken(dir, "viejo"), TrickError);
+  await assert.rejects(() => mintMountToken(dir, "no-such-trick"), TrickError);
 });

@@ -1,5 +1,5 @@
 /**
- * The panel's whole HTTP surface. Sixteen endpoints:
+ * The panel's whole HTTP surface. Seventeen endpoints:
  *
  *   GET  /api/health              is it up, and what is it indexing
  *   GET  /api/notes               every note, no bodies — the sidebar
@@ -16,15 +16,18 @@
  *   GET  /api/tricks/:name        one trick's full manifest
  *   POST /api/tricks/:name/run    run one pre-declared action (code execution)
  *   GET  /api/tricks/:name/app/*  a trick's mini app, into an opaque origin
+ *   POST /api/tricks/:name/mount  mint a one-time token for a browser with no Sec-Fetch-*
  *   POST /api/tricks/:name/bridge the one funnel for a trick's capabilities
  *
  * No endpoint here does anything a human couldn't do by editing a file
  * directly — the API is a faster path to the same filesystem, not a
  * separate capability (README, "The vision"). The exceptions to "boring"
  * are `POST /api/tricks/:name/run` and `POST /api/tricks/:name/bridge`
- * (both run code), `POST /api/attachment` (puts a file on the disk) and
+ * (both run code), `POST /api/attachment` (puts a file on the disk),
  * `GET /api/tricks/:name/app/*` (hands a browser code and tells it to
- * run); each has a written trust boundary — `tricks.ts`, `bridge.ts`,
+ * run) and `POST /api/tricks/:name/mount` (issues the one credential that
+ * can make that GET succeed for a browser the Sec-Fetch gate can't read);
+ * each has a written trust boundary — `tricks.ts`, `bridge.ts`,
  * `attachments.ts` and `writepath.ts` — because there is no
  * authentication in front of any of this.
  *
@@ -67,7 +70,9 @@ import {
   appRequestGate,
   appRoot,
   assertAppRealPath,
+  fallbackAppGate,
   listTricks,
+  mintMountToken,
   readTrickManifest,
   resolveAppFile,
   runTrickAction,
@@ -810,6 +815,9 @@ app.post<{ Params: { name: string }; Body: { actionIndex?: number } }>(
  *    before changing anything here — the obvious wrong version of the
  *    rule 403s every asset the app loads and presents as "my scripts are
  *    fetched but never execute."
+ * 3. `fallbackAppGate`, which runs only when `Sec-Fetch-Dest` is entirely
+ *    absent (a real, non-dev case — see its comment in `tricks.ts`) —
+ *    never for a browser `appRequestGate` can actually read.
  *
  * `Access-Control-Allow-Origin: *` is on app files and **never** on the
  * data routes. ES module scripts are always fetched in CORS mode and the
@@ -819,69 +827,117 @@ app.post<{ Params: { name: string }; Body: { actionIndex?: number } }>(
  * that can reach the tailnet address can read a trick's app source — is
  * already true of every other endpoint here.
  */
-app.get<{ Params: { name: string; "*": string } }>(
-  "/api/tricks/:name/app/*",
-  async (req, reply) => {
-    const gate = appRequestGate(
-      req.headers["sec-fetch-dest"],
-      req.headers["sec-fetch-site"],
-    );
+app.get<{
+  Params: { name: string; "*": string };
+  Querystring: { _m?: string };
+}>("/api/tricks/:name/app/*", async (req, reply) => {
+  const dest = req.headers["sec-fetch-dest"];
+  const site = req.headers["sec-fetch-site"];
+  // Same predicate `appRequestGate` uses internally for its "absent"
+  // branch — whenever that function would have refused for lack of a
+  // dest, this is false and the fallback below runs instead of an
+  // unconditional 403 (tricks.ts, "Fallback for browsers that send no
+  // Sec-Fetch-* headers at all").
+  const hasSecFetch = typeof dest === "string" && dest !== "";
+
+  if (hasSecFetch) {
+    const gate = appRequestGate(dest, site);
     if (!gate.ok) {
       req.log.warn(
-        {
-          trick: req.params.name,
-          url: req.url,
-          dest: req.headers["sec-fetch-dest"] ?? null,
-          site: req.headers["sec-fetch-site"] ?? null,
-        },
+        { trick: req.params.name, url: req.url, dest, site: site ?? null },
         "trick app request refused by the Sec-Fetch gate",
       );
       return reply.code(gate.status).send({ error: gate.error });
     }
+  }
 
-    let manifest;
-    try {
-      manifest = await readTrickManifest(cfg.vaultDir, req.params.name);
-    } catch (err) {
-      // "no such trick" and "the manifest is invalid" are the same
-      // answer from here: there is nothing mountable at that name, and
-      // saying which would let anything on the tailnet enumerate broken
-      // manifests. The *reason* is logged by the listing route.
-      const status = err instanceof TrickError ? 404 : 500;
-      return reply.code(status).send({ error: "no such trick app" });
+  let manifest;
+  try {
+    manifest = await readTrickManifest(cfg.vaultDir, req.params.name);
+  } catch (err) {
+    // "no such trick" and "the manifest is invalid" are the same
+    // answer from here: there is nothing mountable at that name, and
+    // saying which would let anything on the tailnet enumerate broken
+    // manifests. The *reason* is logged by the listing route.
+    const status = err instanceof TrickError ? 404 : 500;
+    return reply.code(status).send({ error: "no such trick app" });
+  }
+
+  let file: { full: string; rel: string };
+  try {
+    file = resolveAppFile(
+      cfg.vaultDir,
+      req.params.name,
+      req.params["*"] ?? "",
+      manifest.app.entrada,
+    );
+    await assertAppRealPath(appRoot(cfg.vaultDir, req.params.name), file.full);
+  } catch (err) {
+    if (err instanceof TrickError) {
+      if (err.statusCode >= 500) throw err;
+      return reply.code(err.statusCode).send({ error: err.message });
     }
+    throw err;
+  }
 
-    let file: { full: string; rel: string };
-    try {
-      file = resolveAppFile(
-        cfg.vaultDir,
-        req.params.name,
-        req.params["*"] ?? "",
-        manifest.app.entrada,
+  if (!hasSecFetch) {
+    const gate = fallbackAppGate(
+      req.params.name,
+      file.rel,
+      file.rel === manifest.app.entrada,
+      req.query?._m,
+    );
+    if (!gate.ok) {
+      req.log.warn(
+        { trick: req.params.name, url: req.url, rel: file.rel },
+        "trick app fallback (no Sec-Fetch-Dest) request refused",
       );
-      await assertAppRealPath(appRoot(cfg.vaultDir, req.params.name), file.full);
-    } catch (err) {
-      if (err instanceof TrickError) {
-        if (err.statusCode >= 500) throw err;
-        return reply.code(err.statusCode).send({ error: err.message });
-      }
-      throw err;
+      return reply.code(gate.status).send({ error: gate.error });
     }
+  }
 
-    const size = (await stat(file.full)).size;
-    return reply
-      .header("Content-Type", appContentType(file.rel))
-      .header("X-Content-Type-Options", "nosniff")
-      // App files change the moment an author saves one, and a stale
-      // cached `index.html` inside an opaque origin is not something a
-      // user can clear from the panel's UI.
-      .header("Cache-Control", "no-store")
-      .header("Access-Control-Allow-Origin", "*")
-      .header("Content-Security-Policy", APP_CSP)
-      .header("Content-Length", String(size))
-      .send(createReadStream(file.full));
-  },
-);
+  const size = (await stat(file.full)).size;
+  return reply
+    .header("Content-Type", appContentType(file.rel))
+    .header("X-Content-Type-Options", "nosniff")
+    // App files change the moment an author saves one, and a stale
+    // cached `index.html` inside an opaque origin is not something a
+    // user can clear from the panel's UI.
+    .header("Cache-Control", "no-store")
+    .header("Access-Control-Allow-Origin", "*")
+    .header("Content-Security-Policy", APP_CSP)
+    .header("Content-Length", String(size))
+    .send(createReadStream(file.full));
+});
+
+/**
+ * Mints a one-time mount token for browsers the Sec-Fetch gate cannot
+ * read at all (tricks.ts has the full reasoning). `POST` so the existing
+ * cross-site guard at the top of this file covers it — Origin has been
+ * sent on same-origin POSTs since long before Fetch Metadata existed, so
+ * this stays enforced even for the exact browsers this endpoint exists
+ * for. No body, no `application/json` requirement: there is nothing to
+ * parse, and the guard is the lock, the same posture `POST
+ * /api/tricks/:name/run` already takes.
+ *
+ * The panel calls this immediately before setting an iframe's `src`, for
+ * every mount regardless of browser — page script cannot read
+ * `Sec-Fetch-*`, so there is no way to skip minting only when the strict
+ * path would fail. On a modern browser the token is minted and then never
+ * looked at: `appRequestGate` decides the entrada request before
+ * `fallbackAppGate` would ever run.
+ */
+app.post<{ Params: { name: string } }>("/api/tricks/:name/mount", async (req, reply) => {
+  try {
+    const token = await mintMountToken(cfg.vaultDir, req.params.name);
+    return { token };
+  } catch (err) {
+    // Same masking as the app route immediately above: "no such trick"
+    // and "invalid manifest" both look like 404 from here.
+    const status = err instanceof TrickError ? 404 : 500;
+    return reply.code(status).send({ error: "no such trick app" });
+  }
+});
 
 /**
  * `/app` without the trailing slash. Relative URLs inside the app would
