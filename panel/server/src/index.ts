@@ -1,13 +1,15 @@
 /**
- * The panel's whole HTTP surface. Fourteen endpoints:
+ * The panel's whole HTTP surface. Sixteen endpoints:
  *
  *   GET  /api/health              is it up, and what is it indexing
  *   GET  /api/notes               every note, no bodies — the sidebar
  *   GET  /api/note?path=          one note: body, frontmatter, backlinks
  *   PUT  /api/note                write one note (the only note write path)
+ *   POST /api/note/move           rename/move a note, rewriting inbound links
  *   GET  /api/attachments         every non-.md file in the vault
  *   GET  /api/attachment?path=    one attachment's raw bytes
  *   POST /api/attachment          upload one attachment (multipart)
+ *   POST /api/attachment/move     rename/move an attachment
  *   GET  /api/graph               the full link graph in one call
  *   GET  /api/health/vault        broken links, slug collisions, frontmatter
  *   GET  /api/tricks              every valid trick manifest, summarized
@@ -25,6 +27,15 @@
  * run); each has a written trust boundary — `tricks.ts`, `bridge.ts`,
  * `attachments.ts` and `writepath.ts` — because there is no
  * authentication in front of any of this.
+ *
+ * `POST /api/note/move` deserves the same billing: it is the network
+ * face of `_tools/steward.py move`, the vault's own sanctioned way to
+ * rename or relocate a note without breaking every inbound
+ * `[[wiki-link]]` in the process (rename.ts carries the full reasoning
+ * and cites the exact lines it mirrors). Two components that each think
+ * they own "how a move works" is the failure mode this project keeps
+ * finding under a different name; this one is built to agree with the
+ * CLI tool rather than invent a second answer.
  */
 import Fastify from "fastify";
 import fastifyStatic from "@fastify/static";
@@ -71,6 +82,7 @@ import {
   resolveUploadTarget,
   servePolicy,
 } from "./attachments.js";
+import { executeAttachmentMove, executeNoteMove, RenameError } from "./rename.js";
 
 const cfg = loadConfig();
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? "info" } });
@@ -306,6 +318,70 @@ app.put<{ Body: { path?: string; content?: string } }>(
     return { ok: true, path: rel };
   },
 );
+
+/**
+ * Rename or move a note — the one operation in this codebase that is a
+ * correctness problem before it is a UI feature (see the file-level
+ * comment on `rename.ts`). Everything that decides *whether* the move
+ * may happen — the basename-uniqueness rule, the destination-exists
+ * check, `assertNetworkWritable` on both `from` and `to` — lives there,
+ * next to a citation of the exact line in `_tools/steward.py move` it
+ * mirrors. This route is the thin HTTP wrapper: parse, delegate, map the
+ * result's status code.
+ *
+ * `application/json` required, same reasoning as `PUT /api/note` right
+ * above — this is a mutating request and CORS forces a preflight a
+ * cross-origin page cannot satisfy, which is the second lock behind the
+ * cross-site guard at the top of this file. That guard is not weakened
+ * anywhere in this route.
+ */
+app.post<{ Body: { from?: string; to?: string } }>("/api/note/move", async (req, reply) => {
+  const ct = String(req.headers["content-type"] ?? "");
+  if (!ct.toLowerCase().startsWith("application/json")) {
+    return reply.code(415).send({ error: "application/json required" });
+  }
+  const { from, to } = req.body ?? {};
+  if (!from || !to) {
+    return reply.code(400).send({ error: "from and to are required" });
+  }
+  let fromRel: string;
+  let toRel: string;
+  try {
+    fromRel = safeRelPath(from);
+    toRel = safeRelPath(to);
+  } catch {
+    return reply.code(400).send({ error: "unsafe path" });
+  }
+
+  try {
+    const result = await executeNoteMove(cfg.vaultDir, cfg.ignore, index, fromRel, toRel);
+    // The moved note itself, plus every file the rewrite touched — the
+    // index-row transplant's two index files included, so a poll-based
+    // client sees the true post-move state immediately rather than
+    // waiting on chokidar's own debounce.
+    await refresh(join(cfg.vaultDir, fromRel), true);
+    await refresh(join(cfg.vaultDir, toRel));
+    for (const path of result.edited) {
+      await refresh(join(cfg.vaultDir, path));
+    }
+    if (result.indexRowMoved) await refresh(join(cfg.vaultDir, result.indexRowMoved));
+    app.log.info(
+      { from: fromRel, to: toRel, edited: result.edited.length },
+      "note moved",
+    );
+    return { ok: true, ...result };
+  } catch (err) {
+    if (err instanceof RenameError) {
+      if (err.statusCode >= 500) {
+        app.log.error({ err, from: fromRel, to: toRel }, "note move failed");
+      } else {
+        app.log.warn({ from: fromRel, to: toRel, reason: err.message }, "note move refused");
+      }
+      return reply.code(err.statusCode).send({ error: err.message });
+    }
+    throw err;
+  }
+});
 
 /**
  * Every non-`.md` file in the vault (roadmap #9) — the same tree as the
@@ -556,6 +632,49 @@ app.post("/api/attachment", async (req, reply) => {
   const size = (await stat(target.full)).size;
   app.log.info({ path: target.rel, size, overwrite }, "attachment uploaded");
   return { ok: true, path: target.rel, size };
+});
+
+/**
+ * Rename or move an attachment. Simpler than the note version — an
+ * attachment carries no `[[wiki-links]]` (vault.ts: "links point at
+ * notes") — but it must not silently overwrite an existing file, the
+ * same 409 the upload route above uses, for the same reason.
+ */
+app.post<{ Body: { from?: string; to?: string } }>("/api/attachment/move", async (req, reply) => {
+  const ct = String(req.headers["content-type"] ?? "");
+  if (!ct.toLowerCase().startsWith("application/json")) {
+    return reply.code(415).send({ error: "application/json required" });
+  }
+  const { from, to } = req.body ?? {};
+  if (!from || !to) {
+    return reply.code(400).send({ error: "from and to are required" });
+  }
+  let fromRel: string;
+  let toRel: string;
+  try {
+    fromRel = safeRelPath(from);
+    toRel = safeRelPath(to);
+  } catch {
+    return reply.code(400).send({ error: "unsafe path" });
+  }
+
+  try {
+    const result = await executeAttachmentMove(cfg.vaultDir, cfg.ignore, index, fromRel, toRel);
+    await refresh(join(cfg.vaultDir, fromRel), true);
+    await refresh(join(cfg.vaultDir, toRel));
+    app.log.info({ from: fromRel, to: toRel }, "attachment moved");
+    return { ok: true, ...result };
+  } catch (err) {
+    if (err instanceof RenameError) {
+      if (err.statusCode >= 500) {
+        app.log.error({ err, from: fromRel, to: toRel }, "attachment move failed");
+      } else {
+        app.log.warn({ from: fromRel, to: toRel, reason: err.message }, "attachment move refused");
+      }
+      return reply.code(err.statusCode).send({ error: err.message });
+    }
+    throw err;
+  }
 });
 
 /**
