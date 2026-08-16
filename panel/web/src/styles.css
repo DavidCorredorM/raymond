@@ -1444,6 +1444,16 @@ a {
   padding: 18px 20px;
 }
 
+.trick-host-mounting {
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  padding: 18px 20px;
+}
+
+.trick-host-mounting p {
+  margin: 0;
+}
+
 .trick-host-gone p {
   margin: 0 0 6px;
 }
