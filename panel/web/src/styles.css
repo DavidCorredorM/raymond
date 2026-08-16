@@ -1,53 +1,60 @@
 /* =====================================================================
-   The palette — "Rain Man", 1988 desert Americana.
+   The palette — "Signal", cool indigo.
    =====================================================================
 
-   The app is named for Rain Man's Raymond (README), and the owner asked
-   for matte, muted colours from that world: dusty blue, warm sand and
-   clay, muted olive, cream, worn chrome. Every value below is either a
-   published Southwest/desert palette colour, cited by name, or one of
-   those anchors moved along a single axis (lightness) to clear a
-   contrast threshold — never a hue invented here.
+   Replaces the desert-Americana matte palette (git history, and
+   docs/log.md's 2026-08-15 entry, for the version this superseded). The
+   owner's verdict on that one, live: "white ugly colors... find another
+   palette, one that's a bit more alive." Four options went into a
+   comparison artifact; the owner picked "Signal" — described as reading
+   "like a tool you trust with real work."
 
-   Provenance, checked rather than remembered: there is no published
-   frame-by-frame colour analysis of the film itself (searched; the
-   cinema-palette sites that cover ~250 films do not include it), so the
-   anchors come from Big Ox Printing's Southwest palettes —
-   https://www.bigoxprinting.com/blogs/color-guides/southwest-color-palette-ideas
-   — specifically "Red Rock Canyon", "Cactus & Sage", "Turquoise & Clay",
-   "Sunbaked Adobe" and "Mesa Dusk". Named anchors used:
+   `--bg`, `--bg-raised`, `--border`, `--fg`, `--fg-muted`, `--accent`,
+   `--accent-hover` and `--accent-contrast` are the eight values from that
+   mockup, unchanged except where noted below — nothing here is a named
+   published swatch the way the desert palette's anchors were; this
+   palette was designed for the comparison, not sourced. `--accent-hover`
+   is the mockup's second accent ("accent2"), a slightly bluer indigo,
+   reused as the hover/secondary shade rather than adding a token for it.
+   `--bg-sunken`, `--border-strong` and `--accent-wash` extend the same
+   two hues (the bg/border neutral, the accent indigo) along lightness —
+   same method the desert palette used, no new hue introduced.
 
-     Warm Ivory      #FAF4E8   Cactus & Sage       page background, light
-     Off-White       #F1E9DA   Red Rock Canyon     raised surfaces, light
-     Soft Grey       #D9D5C9   Cactus & Sage       borders, light
-     Charcoal Brown  #5C3B26   Turquoise & Clay    the ink hue
-     Midnight Blue   #2F4858   Red Rock Canyon     the accent, light
-     Faded Denim     #688E93   Sunbaked Adobe      the accent hue, dark
-     Muted Olive     #7D805F   Cactus & Sage       "fine", "done"
-     Sage Green      #A7B79F   Cactus & Sage       "fine", dark
-     Adobe Clay      #C17C74   Cactus & Sage       "broken", dark
-     Deep Clay       #A05E50   Mesa Dusk           "broken", light
-     Deep Rust       #9D5C34   Red Rock Canyon     "careful"
-     Golden Brown    #C89F67   Mesa Dusk           "careful", dark
-     Dusty Plum      #7C5B6C   Mesa Dusk           one file-kind badge
-     Deep Teal       #3A6B6C   Sky & Sand          one file-kind badge
+   The status/badge colours (`--broken`, `--warning`, `--ok`, and the six
+   `--kind-*` file-type badges) aren't part of the mockup — it only
+   specified UI chrome — so they're new: a conventional red/amber/green
+   for status, plus violet and teal alongside the indigo accent for the
+   file-kind badges, picked to sit comfortably next to Signal's blues
+   rather than clash with them. `--kind-pdf` reuses `--broken` and
+   `--kind-web` reuses `--warning`, `--kind-image` reuses `--ok`, the same
+   reuse pattern the desert palette used for its badges.
 
    **Every foreground/background pair below is asserted at WCAG AA in
-   `src/lib/contrast.test.ts`, which parses this file.** That test is not
-   ceremony: muted is precisely the direction that fails contrast, so a
-   palette described as "calm" needs the check wired to the build or it
-   drifts one comfortable step at a time. Body text clears 4.5:1 on every
-   surface it can land on; the lowest pair in the whole set is 4.82:1
-   (the olive file badge on the deepest light surface), and Muted Olive
-   as published is 4.22:1 there — which is how it got darkened, and the
-   reason for having the check rather than a good eye.
+   `src/lib/contrast.test.ts`, which parses this file.** The mockup's
+   values were picked for visual character, not checked — running the
+   real audit against them found five light-theme misses, all on
+   `--bg-sunken` (the deepest light surface, same failure shape as the
+   desert palette's Muted Olive): `--accent` at 4.26:1, `--ok` and
+   `--kind-image` at 4.28:1, `--kind-sheet` at 4.26:1 on `--bg` too and
+   3.88:1 on `--bg-sunken`, `--kind-media` at 4.26:1. Each was darkened
+   along its own hue by binary search until it cleared 4.55:1 there (a
+   deliberate hair past the 4.5:1 floor, for rounding headroom) — not a
+   blanket darkening, and not the hue changed, just lightness. `--accent`
+   moved from `#5b5bf0` to `#5555ef`, `--ok`/`--kind-image` from `#1a7f4b`
+   to `#197a48`, `--kind-sheet` from the mockup's accent2 to a separate,
+   darker blue (`#1a60eb`) since accent2 itself only has to clear 3:1 as
+   `--focus`-adjacent chrome, not 4.5:1 as body text, `--kind-media` from
+   `#0f7d73` to `#0e786e`. Dark theme cleared AA on every pair unchanged.
+   Lowest pair in the whole shipped set: 4.55:1.
 
-   One rule for anyone adding a colour: add a token here, cite where the
+   One rule for anyone adding a colour: add a token here, say where the
    hue came from, and add the pair to that test. A literal hex anywhere
    else in this file is a colour that no theme switch and no contrast
-   check will ever reach — that is what the previous palette did with the
-   file-type badges, and they stayed bright primary colours through two
-   redesigns because nothing pointed at them.
+   check will ever reach — that is what the previous palette's file-type
+   badges did before they were pulled into this token system. Re-grepped
+   for the same leak while swapping this palette in: `panel/web/src`
+   outside this file, `lib/graphPalette.ts` and the two `*.test.ts` files
+   that intentionally hold hex literals as fixtures — still clean.
 
    Exactly two literals survive below, both deliberately *not* ours:
    `#ffffff` behind an HTML report's iframe (an author's page that sets no
@@ -58,50 +65,57 @@
 :root {
   color-scheme: light dark;
 
-  /* Surfaces, lightest to deepest. */
-  --bg: #faf4e8;
-  --bg-raised: #f1e9da;
-  --bg-sunken: #e7ddc9;
-  --border: #dcd0b8;
-  --border-strong: #c6b696;
+  /* Surfaces, lightest to deepest. `--bg-raised` is *lighter* than `--bg`
+     here (pure white chrome — sidebar, topbar — popping forward off a
+     faintly tinted page), not darker the way the desert palette's raised
+     surface was; `--bg-sunken` still means "recessed" and is the darkest
+     of the three, same as before. */
+  --bg: #f7f7fb;
+  --bg-raised: #ffffff;
+  --bg-sunken: #ececf6;
+  --border: #e3e3ef;
+  --border-strong: #cfcfe3;
 
-  /* Ink. `--fg` is Charcoal Brown taken most of the way to black so body
-     text clears AA on all three surfaces; `--fg-muted` is the same hue,
-     stopped where it still clears 4.5:1 on the *deepest* surface. */
-  --fg: #26221c;
-  --fg-muted: #645b4f;
+  /* Ink. `--fg-muted` is the same hue as `--fg`, stopped where it still
+     clears 4.5:1 on the *deepest* surface (`--bg-sunken`). */
+  --fg: #1a1b29;
+  --fg-muted: #63637a;
 
-  --accent: #2f4858;
-  --accent-hover: #3e5f72;
-  /* What text on an accent fill must be. Never `white` — the cream is
-     part of the palette and pure white next to it reads as a bug. */
-  --accent-contrast: #faf4e8;
+  /* Darkened from the mockup's `#5b5bf0` — see the file-level comment,
+     this is the accent-on-`--bg-sunken` AA fix. */
+  --accent: #5555ef;
+  --accent-hover: #2f6fed;
+  /* What text on an accent fill must be. */
+  --accent-contrast: #ffffff;
   /* A wash of the accent, for a selected row that must not shout. */
-  --accent-wash: #dfe6ea;
+  --accent-wash: #ebebfd;
 
-  --broken: #8c4034;
-  --warning: #7e4a2a;
-  --ok: #4f5a3e;
+  --broken: #c02b3c;
+  --warning: #9a5b06;
+  /* Darkened from `#1a7f4b` — the `--ok`-on-`--bg-sunken` AA fix. */
+  --ok: #197a48;
 
   /* Focus. Its own token, not `--accent`: a focus ring is the one thing
      that must stay visible if the accent is ever softened, and it is
      checked at 3:1 against every surface. */
-  --focus: #2f4858;
+  --focus: #5555ef;
 
-  --code-bg: #e7ddc9;
+  --code-bg: #ececf6;
 
   /* File-kind badges (NoteTree). Tokens, so the dark theme can restate
-     them and the contrast test can see them. */
-  --kind-image: #576242;
-  --kind-pdf: #8c4034;
-  --kind-sheet: #3c5c6b;
-  --kind-doc: #6a4f5e;
-  --kind-web: #7e4a2a;
-  --kind-media: #33605f;
+     them and the contrast test can see them. `--kind-sheet` is its own
+     darkened blue, not `--accent-hover` — see the file-level comment for
+     why the two diverge. */
+  --kind-image: #197a48;
+  --kind-pdf: #c02b3c;
+  --kind-sheet: #1a60eb;
+  --kind-doc: #7a3fa0;
+  --kind-web: #9a5b06;
+  --kind-media: #0e786e;
 
   /* Transparency backdrop for image previews. */
-  --checker-a: #faf4e8;
-  --checker-b: #e7ddc9;
+  --checker-a: #f7f7fb;
+  --checker-b: #ececf6;
 
   /* Type. One scale, so nothing picks a size by feel. The body size is
      deliberately larger than the 14px this app started at: the reader is
@@ -119,40 +133,41 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    /* Night, not a colour-inverted day: warm-neutral surfaces (worn
-       chrome and asphalt) with the same desert hues sitting on them,
-       lightened until each clears AA against them. */
-    --bg: #191b1d;
-    --bg-raised: #212528;
-    --bg-sunken: #131517;
-    --border: #343a3e;
-    --border-strong: #4a5257;
+    /* Night, not a colour-inverted day: cool-neutral surfaces (ink and
+       slate) with the same indigo hues sitting on them, lightened until
+       each clears AA against them. `--bg-raised` is lighter than `--bg`
+       here too, same raised-chrome-pops-forward relationship as light. */
+    --bg: #14141f;
+    --bg-raised: #1d1e2c;
+    --bg-sunken: #0e0e18;
+    --border: #2c2d40;
+    --border-strong: #444661;
 
-    --fg: #eae3d5;
-    --fg-muted: #a79d8d;
+    --fg: #ededf7;
+    --fg-muted: #9a9ab4;
 
-    --accent: #9dbecf;
-    --accent-hover: #b6d0de;
-    --accent-contrast: #14181a;
-    --accent-wash: #2a3339;
+    --accent: #8484ff;
+    --accent-hover: #6fa2ff;
+    --accent-contrast: #0e0e18;
+    --accent-wash: #2c2c4a;
 
-    --broken: #e09a83;
-    --warning: #d2ab74;
-    --ok: #aebfa5;
+    --broken: #ff8a93;
+    --warning: #e0aa5a;
+    --ok: #7fd6a8;
 
-    --focus: #9dbecf;
+    --focus: #8484ff;
 
-    --code-bg: #131517;
+    --code-bg: #0e0e18;
 
-    --kind-image: #aebfa5;
-    --kind-pdf: #e09a83;
-    --kind-sheet: #9dbecf;
-    --kind-doc: #c6a5b4;
-    --kind-web: #d2ab74;
-    --kind-media: #8fbebc;
+    --kind-image: #7fd6a8;
+    --kind-pdf: #ff8a93;
+    --kind-sheet: #6fa2ff;
+    --kind-doc: #cf9ef2;
+    --kind-web: #e0aa5a;
+    --kind-media: #5fd0c4;
 
-    --checker-a: #212528;
-    --checker-b: #131517;
+    --checker-a: #1d1e2c;
+    --checker-b: #0e0e18;
   }
 }
 
