@@ -357,9 +357,12 @@ worked examples: `panel/docs/frontend-implementation-plan.md` §5.
 
 When a user asks to "see X" or "track Y" or wants a dashboard for
 something, this is the mechanism — write the file, no code, no deploy.
-Notes are editable directly in the panel (raw markdown, no formatting
-hidden), by you in a session here, or by Obsidian if the vault is synced
-there — the panel's editor is a plain source editor, not a
-WYSIWYG one. There is no agent-facing API: you make a dashboard, a
-trick, or anything else the panel shows by writing a file, same as
-everything else in this vault.
+Notes are editable directly in the panel, by you in a session here, or
+by Obsidian if the vault is synced there. The panel's editor is live
+preview, not WYSIWYG: `##` and `**` are hidden while you're reading, and
+reappear only on the line the cursor is actually on, so editing still
+means typing plain markdown — the file on disk is exactly what you'd
+expect from what's in this vault, nothing is stored as anything other
+than the markdown you see when the syntax is shown. There is no
+agent-facing API: you make a dashboard, a trick, or anything else the
+panel shows by writing a file, same as everything else in this vault.

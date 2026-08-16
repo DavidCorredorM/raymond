@@ -4,20 +4,31 @@ import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { autocompletion } from "@codemirror/autocomplete";
 import type { NoteSummary } from "../api/types";
 import { useEditorStore } from "./editorStore";
-import { wikilinkDecorationPlugin } from "./wikilinkDecoration";
+import { livePreviewPlugin } from "./livePreviewPlugin";
 import { makeWikilinkSource } from "./wikilinkAutocomplete";
 
 /**
- * CM6 source-mode editor (plan §6.6). Rendered with `key={note.path}` by
- * the caller (NoteRoute) so React fully remounts it on note switch instead
- * of diffing (plan §2.3 pitfall #2). `initialContent` is a one-shot value
- * used only to construct CM6's document at mount — never round-tripped
- * through the `editorStore` buffer `onChange` populates on every
- * keystroke (that round-trip is the controlled-input feedback loop §2.3
- * warns against). NoteRoute passes either server-sourced content or the
- * store's own buffer (when re-entering edit mode for a note that already
- * has one) — either way it's a single fixed value for this mount, not a
- * prop that changes underneath the running editor.
+ * CM6 editor, live-preview mode (owner's ask #5; plan §2.1/§3 phase 2b,
+ * pulled forward from "polish pass, revisit later" per the owner's
+ * instruction that this is "probably the single highest-value item" for
+ * a non-coder). Rendered with `key={note.path}` by the caller (NoteRoute)
+ * so React fully remounts it on note switch instead of diffing (plan
+ * §2.3 pitfall #2). `initialContent` is a one-shot value used only to
+ * construct CM6's document at mount — never round-tripped through the
+ * `editorStore` buffer `onChange` populates on every keystroke (that
+ * round-trip is the controlled-input feedback loop §2.3 warns against).
+ * NoteRoute passes either server-sourced content or the store's own
+ * buffer (when re-entering edit mode for a note that already has one) —
+ * either way it's a single fixed value for this mount, not a prop that
+ * changes underneath the running editor.
+ *
+ * `livePreviewPlugin` (editor/livePreview.ts + livePreviewPlugin.ts)
+ * hides `**`/`*`/`` ` ``/`#`/`[[`/`]]` except on the line the cursor is
+ * on, and colours/weights the text they wrap — so a reader sees close to
+ * formatted prose, not `##` and `**`, without a second renderer or a
+ * mode switch. It replaces the older `wikilinkDecorationPlugin`, which
+ * only ever coloured `[[links]]` and hid nothing; that behaviour is now
+ * one case of the general mechanism rather than a separate plugin.
  *
  * Frontmatter is not stripped or given a separate editing UI — `content`
  * is the full raw file, `---` block included (plan §6.7, deferred as a
@@ -51,7 +62,7 @@ export function NoteEditor({
   const extensions = useMemo(
     () => [
       markdown({ base: markdownLanguage }),
-      wikilinkDecorationPlugin,
+      livePreviewPlugin,
       autocompletion({ override: [wikilinkSource] }),
     ],
     [wikilinkSource],
