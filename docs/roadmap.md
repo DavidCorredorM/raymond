@@ -289,16 +289,19 @@ are the parts deliberately left out of it.
   out to be wrong, the answer is a *query*-shaped capability with a fixed
   filter, not a wider `carpeta`.
 
-## 12. Vault steward — what the first version deliberately does not do
+## 12. Mender — what the first version deliberately does not do
 
 Opened 2026-08-15 with `vault-template/conventions.md`,
-`vault-template/_tools/steward.py`, the `vault-steward` skill and the
-trick of the same name. The design is in the skill; these are the gaps.
+`vault-template/_tools/mender.py`, the `mender` skill and the
+trick of the same name (renamed from `vault-steward` to `mender`, same
+day, once "steward" needed to give way to something that read as healing
+rather than filing — see `docs/log.md`). The design is in the skill;
+these are the gaps.
 
 - **The job is not installed anywhere.** The trick declares
   `programacion: 0 6 */3 * *` and the skill hands off to `schedule-job`,
   which is correct — the base package must not write a crontab — but it
-  means no steward run has ever happened unattended on any machine. The
+  means no mender run has ever happened unattended on any machine. The
   first real deployment to install it is the first real test of the
   brief, and of whether ten judgment cards per run is the right cap.
 - **`*/3` is not "every three days".** Day-of-month `*/3` fires on days
@@ -316,7 +319,7 @@ trick of the same name. The design is in the skill; these are the gaps.
   navigation-breaking findings first, which is right for the
   deterministic half and meaningless for the judgment half: a
   contradiction about a date somebody is about to act on sorts exactly
-  like one about a project that finished last year. The steward has no
+  like one about a project that finished last year. The Mender has no
   notion of what the user is currently working on. `daily/` is the
   obvious signal and is not used.
 - **Staleness detection is the weakest half and is labelled as such.**
@@ -324,7 +327,7 @@ trick of the same name. The design is in the skill; these are the gaps.
   note old — is a judgment a model makes inconsistently. Expect
   `confidence: low` cards that are noise, and expect to tune the wording
   in the skill rather than the script.
-- **No conflict detection between the steward and a human editing at the
+- **No conflict detection between the Mender and a human editing at the
   same time.** Carried over from tricks v2 (§11, and `tricks-spec.md`
   §7.3): writes are plain overwrites. A scheduled run at 06:00 and
   somebody typing in Obsidian at 06:00 can clobber each other. The window
@@ -332,7 +335,7 @@ trick of the same name. The design is in the skill; these are the gaps.
   note rather than a blocker.
 - **The base package now ships one trick**, which `panel/docs/tricks-spec.md`
   §9 originally said it would not. That sentence was corrected rather
-  than the decision reversed: the steward is default machinery whose
+  than the decision reversed: the Mender is default machinery whose
   queue needs a UI, not an example of what a trick can be. If a second
   default trick is ever proposed, this is the precedent to argue with —
   the rule is "no examples", not "no tricks".
@@ -370,7 +373,7 @@ the documented procedure until the puller exists.
 
 **Built, later the same day (2026-08-15).** Everything below this line
 was the spec; nothing in it needed correcting — every path this section
-named an example for (`_tools/*`, the base skills, `vault-steward`
+named an example for (`_tools/*`, the base skills, `mender`
 itself as machinery; `CLAUDE.md`, `index.md`, folder indexes,
 `panel/home.md`, `_templates/*` as seed) landed exactly as described.
 What's real now:
@@ -378,7 +381,7 @@ What's real now:
 - `vault-template/UPDATE-MANIFEST.md` — the manifest, classifying every
   path in today's `vault-template/` tree (not just this section's
   examples — `conventions.md`, `.claude/tricks/_plantillas/`,
-  `.claude/tricks/vault-steward/`, `.claude/jobs/index.md` and
+  `.claude/tricks/mender/`, `.claude/jobs/index.md` and
   `.claude/tricks/index.md` needed a first classification, and two paths
   (`steward/index.md`, `steward/historial/index.md`) turned out to be
   neither machinery nor seed — see the manifest's own "Excluded" section).
@@ -413,10 +416,10 @@ was built from, kept as the historical record:**
 - **A second, harder half: syncing `vault-template/` changes into a
   live deployment's vault**, which is a *different* git repo
   (`~/raymond-brain`) with no ancestry relationship to the base repo.
-  This needs the machinery/seed distinction `vault-steward`'s
+  This needs the machinery/seed distinction `mender`'s
   `conventions.md` already established as a pattern (a written,
   checkable rule beats an implicit one): some template paths
-  (`_tools/*`, the base skills, `vault-steward` itself) are machinery —
+  (`_tools/*`, the base skills, `mender` itself) are machinery —
   overwrite on update, nobody edits these per-deployment — and some
   (`CLAUDE.md`, `index.md`, folder indexes, `panel/home.md`,
   `_templates/*`) are seed — copied once, then the deployment's own,

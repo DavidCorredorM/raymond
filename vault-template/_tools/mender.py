@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-The deterministic half of the vault steward.
+The deterministic half of the Mender.
 
 Everything here is a rule with one right answer: a link that used to
 resolve and no longer does, a filename that does not match the pattern,
 a folder with no index, a note nothing points at. No judgment, no model,
 no cost per run. The judgment half — contradictions, staleness, "these
 two notes disagree", what the subfolders of a flat folder should
-actually be — lives in `.claude/skills/vault-steward/SKILL.md` and needs
+actually be — lives in `.claude/skills/mender/SKILL.md` and needs
 an agent. Keep the line where it is: an agent run for something a script
 can decide is slower, costlier and gives a different answer every time.
 
@@ -15,10 +15,10 @@ The rules are not invented here. They are `conventions.md`, and the
 constants below are its "The numbers" table transcribed. When the two
 disagree, `conventions.md` is right and this file has a bug.
 
-    steward.py check              scan, heal what is safe, write findings
-    steward.py check --dry-run    scan and report, write nothing
-    steward.py move A B           move/rename, rewriting every inbound link
-    steward.py apply              carry out answered proposals
+    mender.py check              scan, heal what is safe, write findings
+    mender.py check --dry-run    scan and report, write nothing
+    mender.py move A B           move/rename, rewriting every inbound link
+    mender.py apply              carry out answered proposals
 
 The one boundary that must not move, stated here as well as in the skill
 and in conventions.md §5:
@@ -341,9 +341,9 @@ class Finding:
             "## Answering",
             "",
             "Type what is true into `respuesta:` in the frontmatter above —",
-            "in the panel's steward card, or in any editor. Then set",
+            "in the panel's Mender card, or in any editor. Then set",
             "`decision:` to `aplicar` or `descartar` and `estado:` to",
-            "`respondido`. The next steward run reads it.",
+            "`respondido`. The next mender run reads it.",
             "",
         ]
         return "\n".join(lines)
@@ -393,10 +393,10 @@ def check_all(v: Vault):
     fixes: list[tuple] = []
     reports: list[str] = []
 
-    # The steward's own cards are machinery, not content, and every check
+    # The Mender's own cards are machinery, not content, and every check
     # below runs against `subjects` rather than every note in the vault.
     # Skipping this is not cosmetic: a card names the notes it is about, so
-    # scanning cards makes the steward find its own output, card that, and
+    # scanning cards makes the Mender find its own output, card that, and
     # card the card. Observed, on the second run of the first version. The
     # same shape as the agent brief that once contaminated the vault's
     # health counts (docs/log.md, 2026-08-14).
@@ -434,7 +434,7 @@ def check_all(v: Vault):
                 # The broken target is quoted as bare text, never inside
                 # `[[ ]]`. A card that reproduces the bracket syntax is
                 # itself a note containing a broken wiki-link, so the next
-                # `vault-lint --links` reports the steward's own output as
+                # `vault-lint --links` reports the Mender's own output as
                 # damage. Do not "fix" this by adding the brackets back.
                 findings.append(Finding(
                     "broken-link",
@@ -506,7 +506,7 @@ def check_all(v: Vault):
             [r],
             f"`{r}` {reason}.\n\nIts `titulo` is "
             + (f"“{titulo}”." if titulo else "not set, so there is nothing to derive a name from.")
-            + "\n\nA rename goes through `_tools/steward.py move`, which rewrites every\n"
+            + "\n\nA rename goes through `_tools/mender.py move`, which rewrites every\n"
               f"inbound link in the same operation — {len(v.inbound[r])} point here today.",
             proposal=proposal, identity=[r],
         ))
@@ -564,7 +564,7 @@ def check_all(v: Vault):
                 or v.fm[r].get("widgets") is not None):
             continue
         out = [t for t, _ in v.outbound[r]]
-        # Index rows are navigation, not meaning, and a steward card is
+        # Index rows are navigation, not meaning, and a Mender card is
         # machinery. Neither counts as somebody linking to this note —
         # otherwise carding a note as an orphan is what stops it being one.
         inb = {s for s in v.inbound[r]
@@ -632,16 +632,16 @@ def check_all(v: Vault):
                 "listing\nstops being something you scan.\n\n"
                 f"First few: {sample}…\n\n"
                 "**Deciding the groups is a judgment call and this tool does not make it.**\n"
-                "Answer with the grouping you want, or ask the `vault-steward` skill to\n"
+                "Answer with the grouping you want, or ask the `mender` skill to\n"
                 "propose one; each resulting move then goes through "
-                "`steward.py move`, which\nrewrites inbound links as it goes.",
+                "`mender.py move`, which\nrewrites inbound links as it goes.",
                 identity=[d],
             ))
 
     for r in subjects:
         depth = len(Path(r).parts) - 1
         # An index sits wherever its folder sits. Carding it for being too
-        # deep asks the user about a file the steward itself created, and
+        # deep asks the user about a file the Mender itself created, and
         # the real finding — the folder is too deep — is already raised
         # against the notes inside it.
         if Path(r).name == "index.md":
@@ -930,16 +930,16 @@ def retire_closed(v: Vault, dry: bool):
 
 
 def write_steward_indexes(v: Vault, dry: bool, today: str, summary: list[str]):
-    """Regenerated in full every run. The steward owns these two files, so
+    """Regenerated in full every run. The Mender owns these two files, so
     they are the one place in the vault where wholesale rewriting is right
-    — and it means the steward's own folder can never go stale."""
+    — and it means its own folder can never go stale."""
     if dry:
         return
     for folder, titulo, cuando in (
-        (STEWARD_DIR, "Steward findings",
-         "Read to see what the vault steward flagged and has not been answered yet."),
-        (HISTORY_DIR, "Steward findings, answered",
-         "Read for the record of what the steward flagged and how it was resolved."),
+        (STEWARD_DIR, "Mender findings",
+         "Read to see what the Mender flagged and has not been answered yet."),
+        (HISTORY_DIR, "Mender findings, answered",
+         "Read for the record of what the Mender flagged and how it was resolved."),
     ):
         d = v.root / folder
         if not d.exists():
@@ -959,8 +959,8 @@ def write_steward_indexes(v: Vault, dry: bool, today: str, summary: list[str]):
             f'cuando-usar: "{cuando}"\n---\n\n'
             f"# {titulo}\n\n"
             "One file per finding. Answer one by filling `respuesta:` and `decision:`\n"
-            "in its frontmatter — in the panel's steward card, in Obsidian, or in any\n"
-            "editor. Regenerated by `_tools/steward.py`; edits to this file are lost.\n\n"
+            "in its frontmatter — in the panel's Mender card, in Obsidian, or in any\n"
+            "editor. Regenerated by `_tools/mender.py`; edits to this file are lost.\n\n"
             "| Hallazgo | Clase | Estado |\n|---|---|---|\n"
         )
         body = "\n".join(rows) if rows else "| — | — | nothing open |"
@@ -1019,7 +1019,7 @@ def cmd_apply(v: Vault, dry: bool) -> int:
             # true. That is the agent's half of the job, deliberately not
             # attempted here.
             print(f"agent   {r}: answered, but resolving it means editing notes — "
-                  "run the vault-steward skill")
+                  "run the mender skill")
     print(f"\n{acted} finding(s) carried out" + (" (--dry-run)" if dry else ""))
     return 0
 
@@ -1056,7 +1056,7 @@ def cmd_check(v: Vault, dry: bool, cap: int) -> int:
     write_steward_indexes(Vault(v.root) if not dry else v, dry, today, summary)
 
     subjects = [r for r in v.notes if not r.startswith(STEWARD_DIR + "/")]
-    print(f"vault steward — {today}" + ("  (--dry-run)" if dry else ""))
+    print(f"mender — {today}" + ("  (--dry-run)" if dry else ""))
     print(f"  {len(subjects)} notes, "
           f"{len({str(Path(r).parent) for r in subjects})} folders with notes\n")
     print("Fixed automatically (lossless only)")
@@ -1084,7 +1084,7 @@ def cmd_check(v: Vault, dry: bool, cap: int) -> int:
 
 def main() -> int:
     tools = Path(__file__).resolve().parent
-    ap = argparse.ArgumentParser(prog="steward.py", description=__doc__,
+    ap = argparse.ArgumentParser(prog="mender.py", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     # The vault is the one containing this tool, not a fixed path — the
     # same rule as vault-lint and vault-search, and for the same reason: a

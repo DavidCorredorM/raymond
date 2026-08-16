@@ -33,7 +33,7 @@
  * authentication in front of any of this.
  *
  * `POST /api/note/move` deserves the same billing: it is the network
- * face of `_tools/steward.py move`, the vault's own sanctioned way to
+ * face of `_tools/mender.py move`, the vault's own sanctioned way to
  * rename or relocate a note without breaking every inbound
  * `[[wiki-link]]` in the process (rename.ts carries the full reasoning
  * and cites the exact lines it mirrors). Two components that each think
@@ -76,6 +76,7 @@ import {
   mintMountToken,
   readTrickManifest,
   resolveAppFile,
+  resolveLocalized,
   runTrickAction,
   TrickError,
 } from "./tricks.js";
@@ -357,7 +358,7 @@ app.put<{ Body: { path?: string; content?: string } }>(
  * comment on `rename.ts`). Everything that decides *whether* the move
  * may happen — the basename-uniqueness rule, the destination-exists
  * check, `assertNetworkWritable` on both `from` and `to` — lives there,
- * next to a citation of the exact line in `_tools/steward.py move` it
+ * next to a citation of the exact line in `_tools/mender.py move` it
  * mirrors. This route is the thin HTTP wrapper: parse, delegate, map the
  * result's status code.
  *
@@ -763,7 +764,7 @@ app.get("/api/health/vault", async () => {
  * of silently vanishing, same reasoning as `reindex failed` above.
  */
 app.get("/api/tricks", async () =>
-  listTricks(cfg.vaultDir, (name, err) =>
+  listTricks(cfg.vaultDir, cfg.language, (name, err) =>
     app.log.warn({ err, trick: name }, "trick skipped: invalid manifest"),
   ),
 );
@@ -777,11 +778,21 @@ app.get("/api/tricks", async () =>
  * that now includes a v1 manifest, which fails on the missing `app:`
  * like any other invalid manifest rather than reaching a second
  * renderer.
+ *
+ * `titulo`/`descripcion` are resolved for `cfg.language` here, the same
+ * as `listTricks` resolves them for the summary (tricks.ts §4.2) — the
+ * wire shape has always been a plain string, and a client reading this
+ * response has no reason to know the manifest can hold `{en, es}` at all.
  */
 app.get<{ Params: { name: string } }>("/api/tricks/:name", async (req, reply) => {
   try {
     const manifest = await readTrickManifest(cfg.vaultDir, req.params.name);
-    return { name: req.params.name, ...manifest };
+    return {
+      name: req.params.name,
+      ...manifest,
+      titulo: resolveLocalized(manifest.titulo, cfg.language) ?? "",
+      descripcion: resolveLocalized(manifest.descripcion, cfg.language),
+    };
   } catch (err) {
     const status = err instanceof TrickError ? 404 : 500;
     return reply.code(status).send({ error: (err as Error).message });

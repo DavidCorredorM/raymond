@@ -816,7 +816,7 @@ async function opScriptRun(
  * — re-joined the folder onto itself. Measured 2026-08-15: `formulario`
  * with `crear: true` produced
  * `.claude/tricks/formulario/data/.claude/tricks/formulario/data/nueva.md`,
- * and both `lista` and `vault-steward` silently failed their write-back
+ * and both `lista` and `mender` silently failed their write-back
  * the same way. Never a scope escape — the containment test below always
  * held — but two of four shipped starters were broken by it.
  *

@@ -18,12 +18,12 @@
 # a commit, and one that must exist independent of git's own state.
 .claude/jobs/.*.lock
 
-# vault-steward's own working state — regenerated wholesale by steward.py,
+# the Mender's own working state — regenerated wholesale by mender.py,
 # not machinery or seed (UPDATE-MANIFEST.md's "Excluded" section covers the
 # committed halves; these are the parts that are pure scratch space).
 steward/.*.lock
 
-# Python bytecode cache from _tools/*.py (linkcheck.py, steward.py,
+# Python bytecode cache from _tools/*.py (linkcheck.py, mender.py,
 # vault-lint if it ever grows a Python path). Matches the base repo's own
 # root .gitignore — kept here too because this file ships *into* a vault
 # that has no other .gitignore of its own without this one.

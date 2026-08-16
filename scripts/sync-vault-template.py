@@ -8,7 +8,7 @@ what changed in the seed paths so a human can hand-merge.
 
 Defaults: --vault is $HOME/raymond-brain, --base is the vault-template/
 sibling of this script's own repo (i.e. this script assumes it is being
-run from a checkout of the base package, same as `_tools/steward.py`
+run from a checkout of the base package, same as `_tools/mender.py`
 assumes it lives inside the vault it checks — see that file's own
 `--vault` comment).
 
@@ -47,7 +47,7 @@ eight combinations is genuinely ambiguous:
                               a card, nothing written
 
 Git history was considered instead of a stored hash (docs/roadmap.md §13
-raises both) and rejected for this vault specifically: `steward.py move`
+raises both) and rejected for this vault specifically: `mender.py move`
 rewrites files outside a plain edit, a squash or an Obsidian sync tool
 can flatten history, and "does this content match some commit this vault
 ever synced from" needs a full walk of that history on every machinery
@@ -55,7 +55,7 @@ path, every run. A content hash is one `sha1()` call, is exact, and does
 not care how the local copy came to be what it is.
 
 Findings that need a human are written as cards in `steward/`, in the
-same shape `_tools/steward.py` already uses (read that file's `Finding`
+same shape `_tools/mender.py` already uses (read that file's `Finding`
 class before touching this one) — same frontmatter fields, same
 `estado`/`decision`/`respondido` answer flow, same "never put a broken
 target inside `[[ ]]`" rule. This script also *reads* answered cards of
@@ -70,7 +70,7 @@ vault has no ancestry relationship to the base package
 (README rule 1). A run with nothing to do commits nothing: the vault's
 git log is a record of real changes, not a heartbeat.
 
-Stdlib only — same reason `_tools/steward.py` is: this runs from cron on
+Stdlib only — same reason `_tools/mender.py` is: this runs from cron on
 a box where nobody has pip-installed anything.
 """
 
@@ -178,7 +178,7 @@ def classify(base: Path) -> tuple[dict[str, str], list[str]]:
         str(p.relative_to(base)) for p in base.rglob("*")
         if p.is_file()
         # Dotted directories other than .claude are tooling (.git, .obsidian,
-        # …), same exclusion linkcheck.py and steward.py both make.
+        # …), same exclusion linkcheck.py and mender.py both make.
         and not any(part.startswith(".") and part != ".claude"
                     for part in p.relative_to(base).parts[:-1])
         and p.name != MANIFEST_NAME
@@ -249,9 +249,9 @@ def git_commit(vault: Path, message: str, paths: list[str], dry: bool) -> bool:
 # ---------------------------------------------------------------------------
 #
 # Regenerated in full every run that changes something, the same way
-# `_tools/steward.py` owns and wholesale-rewrites `steward/index.md` —
+# `_tools/mender.py` owns and wholesale-rewrites `steward/index.md` —
 # this file is machine state, not a note a human hand-edits, and trying
-# to surgically patch YAML with regexes (steward.py does that for real
+# to surgically patch YAML with regexes (mender.py does that for real
 # notes, carefully, because it must never reflow someone's frontmatter)
 # would be solving a problem this file doesn't have.
 
@@ -308,7 +308,7 @@ sync:
 
 Which base-package commit this vault's **machinery** paths (see
 `UPDATE-MANIFEST.md` in the base checkout — `_tools/*`, the base skills,
-the `vault-steward` trick) were last synced from, and the per-path
+the `mender` trick) were last synced from, and the per-path
 content hash recorded at that moment. That hash is what lets the next
 run tell "the base package changed this" apart from "this vault edited
 it" — see `scripts/sync-vault-template.py`'s own header comment for the
@@ -318,7 +318,7 @@ make its conflict detection wrong in either direction.**
 ## Baseline hashes
 
 Regenerated in full every run that changes anything — same discipline
-`_tools/steward.py` uses for `steward/index.md`, and for the same
+`_tools/mender.py` uses for `steward/index.md`, and for the same
 reason: a file a script owns entirely is safe to rewrite wholesale, and
 trying to patch it surgically only invites the two copies drifting.
 
@@ -343,7 +343,7 @@ heartbeat; see `.claude/jobs/` if you want the latter.
 
 
 # ---------------------------------------------------------------------------
-# Conflict cards — steward/, same shape _tools/steward.py's Finding writes
+# Conflict cards — steward/, same shape _tools/mender.py's Finding writes
 # ---------------------------------------------------------------------------
 
 
@@ -380,7 +380,7 @@ def write_conflict_card(vault: Path, path: str, local_hash: str, base_hash: str,
                          baseline_hash: str | None, dry: bool) -> str | None:
     fp = conflict_fingerprint(path, local_hash, base_hash)
     if fp in existing_conflict_fingerprints(vault):
-        return None  # already carded, same fingerprint — same rule steward.py's sync_findings uses
+        return None  # already carded, same fingerprint — same rule mender.py's sync_findings uses
 
     today = str(date.today())
     slug = re.sub(r"[^a-z0-9]+", "-", path.lower()).strip("-")

@@ -1,36 +1,29 @@
+/* Colors come from the panel's own palette, not from this file. bridge.js
+ * reads the host's tokens (from the hello and every `tema` event,
+ * panel/docs/tricks-spec.md §6.2, §6.9) and writes them onto `:root` as
+ * `--host-*`. This block maps this app's own variable names onto those,
+ * with a static fallback for the one case a `--host-*` value isn't there
+ * yet: opened standalone, outside the panel. See
+ * `.claude/skills/trick-creator/SKILL.md` §6. */
 :root {
-  --fondo: #ffffff;
-  --texto: #1c1c1e;
-  --tenue: #6b7280;
-  --linea: #e5e7eb;
-  --barra: #2563eb;
-  --alerta: #b91c1c;
+  --fondo: var(--host-bg, #ffffff);
+  --texto: var(--host-fg, #1c1c1e);
+  --tenue: var(--host-fg-muted, #6b7280);
+  --linea: var(--host-border, #e5e7eb);
+  --barra: var(--host-accent, #2563eb);
+  --alerta: var(--host-broken, #b91c1c);
 }
+/* Fallback only, for the standalone case above on a system in dark mode —
+   superseded the instant a --host-* value exists, in either theme. */
 @media (prefers-color-scheme: dark) {
   :root {
-    --fondo: #17181b;
-    --texto: #e8e8ea;
-    --tenue: #9aa0a6;
-    --linea: #2c2e33;
-    --barra: #7aa2f7;
-    --alerta: #f28b82;
+    --fondo: var(--host-bg, #17181b);
+    --texto: var(--host-fg, #e8e8ea);
+    --tenue: var(--host-fg-muted, #9aa0a6);
+    --linea: var(--host-border, #2c2e33);
+    --barra: var(--host-accent, #7aa2f7);
+    --alerta: var(--host-broken, #f28b82);
   }
-}
-:root[data-tema="claro"] {
-  --fondo: #ffffff;
-  --texto: #1c1c1e;
-  --tenue: #6b7280;
-  --linea: #e5e7eb;
-  --barra: #2563eb;
-  --alerta: #b91c1c;
-}
-:root[data-tema="oscuro"] {
-  --fondo: #17181b;
-  --texto: #e8e8ea;
-  --tenue: #9aa0a6;
-  --linea: #2c2e33;
-  --barra: #7aa2f7;
-  --alerta: #f28b82;
 }
 
 * {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useT } from "../i18n/store";
+import { useI18nStore, useT } from "../i18n/store";
 import { interpolate } from "../i18n/interpolate";
+import type { Language } from "../api/types";
 import {
   byteLength,
   denyReason,
@@ -57,6 +58,26 @@ import {
  * speed and for legible errors, never as the fence.
  */
 
+/**
+ * The panel's own CSS custom properties (`panel/web/src/styles.css`'s
+ * `:root`), read live at handshake time — whatever palette is actually
+ * running, light or dark, without this file ever knowing a hex value.
+ * Read-only context, not a capability (§7): a trick that never touches the
+ * DOM is unaffected, and there is nothing here for a trick to act on
+ * beyond drawing itself. See the security note at `currentTokens` below.
+ */
+interface HostTokens {
+  bg: string;
+  bgRaised: string;
+  fg: string;
+  fgMuted: string;
+  border: string;
+  accent: string;
+  accentHover: string;
+  accentContrast: string;
+  broken: string;
+}
+
 /** What the app is told at handshake. The only `window`-level message in the protocol (§6.2). */
 interface Hello {
   raymond: "trick-bridge";
@@ -64,7 +85,17 @@ interface Hello {
   trick: string;
   capacidades: string[];
   tema: "claro" | "oscuro";
-  locale: string;
+  /**
+   * The deployment's own configured UI language (`Config.language`,
+   * `GET /api/health`) — **not** the visiting browser's `navigator.language`.
+   * A trick's own strings should follow the same setting the panel's chrome
+   * already does, not whatever locale happens to be on the device that
+   * opened it. Read-only display hint: nothing server-side branches on a
+   * value a trick could claim, because nothing server-side ever reads this
+   * field at all — see the note at its call site below.
+   */
+  locale: Language;
+  tokens: HostTokens;
 }
 
 /** One refusal, shown to the user next to the trick. */
@@ -87,6 +118,49 @@ function currentTheme(): "claro" | "oscuro" {
     window.matchMedia?.("(prefers-color-scheme: dark)").matches
     ? "oscuro"
     : "claro";
+}
+
+/** `HostTokens` field name -> the panel's own CSS custom property (styles.css). */
+const TOKEN_VARS: Record<keyof HostTokens, string> = {
+  bg: "--bg",
+  bgRaised: "--bg-raised",
+  fg: "--fg",
+  fgMuted: "--fg-muted",
+  border: "--border",
+  accent: "--accent",
+  accentHover: "--accent-hover",
+  accentContrast: "--accent-contrast",
+  broken: "--broken",
+};
+
+/**
+ * Reads the panel's live palette off `document.documentElement` and hands
+ * it to a mounted trick as plain strings — `#191b1d`, not a variable name.
+ * A trick that wants to look like part of the app sets its own CSS custom
+ * properties from these (bridge.js does this automatically for any starter
+ * built from `_plantillas/`; `.claude/skills/trick-creator/SKILL.md` §6
+ * writes up the pattern for a trick built from scratch).
+ *
+ * **Why this cannot become a new way to influence the host or spoof
+ * anything that matters (constraint from `panel/docs/tricks-spec.md`,
+ * matching the rigor already established for the bridge):** this is
+ * strictly an outbound value, host -> frame, sent once at mount and again
+ * whenever the *host's own* `prefers-color-scheme` flips (the existing
+ * `onTheme` listener below). The frame never sends a token back, the
+ * server never reads one — `bridge.ts` and `tricks.ts` have no field named
+ * `tokens` or `locale` anywhere in their request handling, so there is
+ * nothing here for a hostile trick to forge that any authority check would
+ * ever consult. It is exactly the same trust shape `tema` already had
+ * before this change: a display hint the frame is free to ignore, ruin, or
+ * paint over inside its own rectangle (§2.4), and nothing more.
+ */
+function currentTokens(): HostTokens {
+  const cs = typeof window !== "undefined" ? getComputedStyle(document.documentElement) : null;
+  const out = {} as HostTokens;
+  for (const key of Object.keys(TOKEN_VARS) as (keyof HostTokens)[]) {
+    out[key] = cs ? cs.getPropertyValue(TOKEN_VARS[key]).trim() : "";
+  }
+  return out;
 }
 
 export interface TrickHostProps {
@@ -371,7 +445,12 @@ export function TrickHost({ name, titulo, alto, capacidades }: TrickHostProps) {
         trick: name,
         capacidades: [...declared],
         tema: currentTheme(),
-        locale: navigator.language || "en",
+        // The deployment's own configured language (Settings), read from
+        // the same store `useT` reads — not `navigator.language`. A
+        // trick's own strings should follow what the owner set for the
+        // panel's chrome, not whatever locale the visiting device reports.
+        locale: useI18nStore.getState().language,
+        tokens: currentTokens(),
       };
       // `targetOrigin` must be `"*"`: an opaque origin has no name and
       // `postMessage(msg, "null")` throws. Three things make that safe
@@ -459,16 +538,35 @@ export function TrickHost({ name, titulo, alto, capacidades }: TrickHostProps) {
       freshnessTimer = setInterval(() => void poll(), FRESHNESS_MS);
     }
 
-    // ---- theme ----------------------------------------------------------
+    // ---- theme ------------------------------------------------------------
+    // Resent with fresh `tokens` too, not just `valor` — a light/dark flip
+    // changes every one of styles.css's `:root` values at once, and a
+    // trick that only stored the first hello's tokens would otherwise
+    // repaint the theme flag while keeping the old colors.
     const media = window.matchMedia?.("(prefers-color-scheme: dark)");
-    const onTheme = () => send({ v: 1, ev: "tema", valor: currentTheme() });
+    const onTheme = () => send({ v: 1, ev: "tema", valor: currentTheme(), tokens: currentTokens() });
     media?.addEventListener("change", onTheme);
+
+    // ---- language -----------------------------------------------------
+    // Unlike tema this has no browser media query to listen on — it only
+    // ever changes because the owner changed it in Settings, which is a
+    // `POST /api/settings` that updates this same zustand store
+    // (SettingsRoute.tsx) the panel's own chrome reads via `useT`. A plain
+    // subscription, not a hook: this effect must not re-run (and remount
+    // the frame) just because the language changed — see the effect's own
+    // closing comment for why `capKeysSignature`/`foldersSignature` are
+    // there for the identical reason.
+    const offLanguage = useI18nStore.subscribe((state, prev) => {
+      if (state.language === prev.language) return;
+      send({ v: 1, ev: "locale", valor: state.language });
+    });
 
     return () => {
       disposed = true;
       frame.removeEventListener("load", onLoad);
       window.removeEventListener("message", onWindowMessage);
       media?.removeEventListener("change", onTheme);
+      offLanguage();
       if (freshnessTimer) clearInterval(freshnessTimer);
       teardownPort();
     };

@@ -1,6 +1,6 @@
 /**
  * Rename or move a note or an attachment — the panel's HTTP face of the
- * exact operation `_tools/steward.py move` already performs from a
+ * exact operation `_tools/mender.py move` already performs from a
  * terminal, and deliberately built to agree with it rather than invent a
  * second notion of "move."
  *
@@ -10,9 +10,9 @@
  * same operation.** This is the exact bug class this project keeps
  * hitting (README rule 5's sibling problem, one layer down — two
  * components that both think they own "how a move works" is how both
- * become untrustworthy). `steward.py move` is the sanctioned path
+ * become untrustworthy). `mender.py move` is the sanctioned path
  * inside a vault session; this module is the sanctioned path from the
- * browser. Read `_tools/steward.py`'s own `cmd_move` (the
+ * browser. Read `_tools/mender.py`'s own `cmd_move` (the
  * "move — the only way a file changes place" section) before changing
  * anything here — every design choice below cites the line in that
  * script it mirrors.
@@ -45,17 +45,17 @@ export class RenameError extends Error {
 /**
  * Mirrors `vault.ts`'s own `WIKILINK` regex exactly, except the optional
  * `|alias` / `#heading` suffix is *captured* instead of discarded — a
- * rewrite has to carry it forward onto the new target. `steward.py`
+ * rewrite has to carry it forward onto the new target. `mender.py`
  * carries two copies of this pattern for the identical reason: one for
  * *finding* links (`linkcheck.py`, `vault.ts`), one for *rewriting* them
- * (`steward.py`'s own `WIKILINK`, this one). Keep both letters — group 1
+ * (`mender.py`'s own `WIKILINK`, this one). Keep both letters — group 1
  * is the target text, group 2 is the whole `|...`/`#...` suffix or "".
  */
 const WIKILINK_REWRITE = /\[\[([^\]|#]+)((?:[|#][^\]]*)?)\]\]/g;
 
 /**
  * Vault-relative paths with no dot-prefixed segment — the exact scope
- * `steward.py`'s `Vault.__init__` uses for `self.md`/`by_name`, the
+ * `mender.py`'s `Vault.__init__` uses for `self.md`/`by_name`, the
  * index its own basename-clash check reads
  * (`if not any(part.startswith(".") for part in p.relative_to(root).parts)`).
  * Matched here on purpose: a client refusing a move the CLI tool would
@@ -135,7 +135,7 @@ export function planNoteMove(index: VaultIndex, fromRel: string, toRel: string):
   }
 
   const newStem = stemOf(toRel);
-  // Basename uniqueness (conventions.md §2, enforced by steward.py move):
+  // Basename uniqueness (conventions.md §2, enforced by mender.py move):
   // two notes sharing a filename in different folders make every bare
   // [[wiki-link]] to that name ambiguous — resolveLink() (vault.ts) picks
   // whichever sorts first and calls it resolved, silently.
@@ -178,7 +178,7 @@ function rewriteLinks(text: string, hits: Set<string>, newStem: string): string 
   });
 }
 
-/** `add_rows` from steward.py, ported: append after the first markdown table, or start a new one if there isn't one yet. */
+/** `add_rows` from mender.py, ported: append after the first markdown table, or start a new one if there isn't one yet. */
 function addIndexRow(text: string, row: string): string {
   const lines = text.replace(/\n+$/, "").split("\n");
   const sepIdx = lines.findIndex((l) => /^\|[\s:-]+\|/.test(l));
@@ -191,7 +191,7 @@ function addIndexRow(text: string, row: string): string {
   return `${lines.join("\n")}\n`;
 }
 
-/** `index_template` from steward.py, ported: the deployment's own template if it exists, else the same generic fallback. */
+/** `index_template` from mender.py, ported: the deployment's own template if it exists, else the same generic fallback. */
 async function indexTemplateOrFallback(vaultDir: string, folder: string): Promise<string> {
   const today = new Date().toISOString().slice(0, 10);
   try {
@@ -261,7 +261,7 @@ export async function executeNoteMove(
   // looks for `[[{new_stem}` (the *new* name) inside the *old* index,
   // which only finds the row when the basename didn't change, i.e. a
   // folder-only move. A simultaneous rename-and-move leaves the row
-  // behind in the old index, exactly as steward.py move does. Ported
+  // behind in the old index, exactly as mender.py move does. Ported
   // faithfully rather than "fixed" here, because the two must keep
   // agreeing or a person moving files first with one tool and then the
   // other gets two different outcomes for the same input.

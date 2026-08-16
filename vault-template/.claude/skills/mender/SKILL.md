@@ -1,9 +1,9 @@
 ---
-name: vault-steward
-description: Keep the vault organized and internally consistent — check it against conventions.md, fix what is safe, and raise a card for everything that needs a human decision. Finds contradictions between notes, facts that have gone stale, misplaced notes, and folders that have outgrown their shape, and proposes folder refactors with the link rewriting included. Use when the user asks whether the vault is drifting, wants a tidy-up or a reorganization, says two notes disagree, asks what the steward found, or answers a card. This is also what the every-three-days scheduled run invokes.
+name: mender
+description: Keep the vault organized and internally consistent — check it against conventions.md, fix what is safe, and raise a card for everything that needs a human decision. Finds contradictions between notes, facts that have gone stale, misplaced notes, and folders that have outgrown their shape, and proposes folder refactors with the link rewriting included. Use when the user asks whether the vault is drifting, wants a tidy-up or a reorganization, says two notes disagree, asks what the Mender found, or answers a card. This is also what the every-three-days scheduled run invokes.
 ---
 
-# Vault steward
+# Mender
 
 Two jobs, in this order, because the second is worthless without the first:
 
@@ -31,7 +31,7 @@ engineering argument, not a safety one, and it is the same one
 
 | Half | What it decides | Who does it |
 |---|---|---|
-| **Deterministic** | Broken wiki-links · filenames against the pattern · duplicate basenames · missing or incomplete frontmatter · missing folder indexes · index rows that are missing · orphaned notes · empty folders · folders past the fan-out limit · notes past the depth limit · notes loose at the root | `_tools/steward.py check` — a plain Python script, stdlib only, no model, no cost |
+| **Deterministic** | Broken wiki-links · filenames against the pattern · duplicate basenames · missing or incomplete frontmatter · missing folder indexes · index rows that are missing · orphaned notes · empty folders · folders past the fan-out limit · notes past the depth limit · notes loose at the root | `_tools/mender.py check` — a plain Python script, stdlib only, no model, no cost |
 | **Judgment** | Contradictions between notes · facts that have probably gone stale · a note filed in the wrong folder · *what the subfolders of an overgrown folder should actually be* · writing a real `cuando-usar` · reading a user's free-text answer and acting on it | You, in this skill |
 
 The script hands you its half of the work in its run report. Do not
@@ -39,10 +39,10 @@ re-derive it by reading files yourself; you will be slower and less
 complete.
 
 ```sh
-_tools/steward.py check              # scan, heal what is safe, write cards
-_tools/steward.py check --dry-run    # report only, writes nothing
-_tools/steward.py apply              # carry out answered proposals
-_tools/steward.py move A B           # move/rename + rewrite every inbound link
+_tools/mender.py check              # scan, heal what is safe, write cards
+_tools/mender.py check --dry-run    # report only, writes nothing
+_tools/mender.py apply              # carry out answered proposals
+_tools/mender.py move A B           # move/rename + rewrite every inbound link
 ```
 
 ## 2. Its relationship to `vault-health` — extend and call, do not absorb
@@ -53,19 +53,19 @@ this skill does not replace either. The split is by *when*, not by *what*:
 - **`vault-health`** is the thing a person reaches for: "is my vault okay
   right now?", usually right after an import or a bulk rename. Three
   checks, a short report, fix them in the same session, done.
-- **`vault-steward`** is the unattended one. It runs on a schedule, it
+- **`mender`** is the unattended one. It runs on a schedule, it
   checks against a much wider set of rules, and instead of fixing
   everything it can, it deliberately leaves a queue of questions for a
   human, because nobody was there to ask.
 
-`steward.py` **imports `_tools/linkcheck.py`** rather than resolving
+`mender.py` **imports `_tools/linkcheck.py`** rather than resolving
 wiki-links a second way, so "broken" means the same thing in both tools.
 That was deliberate: a link checker that disagrees with the other link
 checker is how both get ignored. If you touch link resolution, touch it
 in `linkcheck.py`.
 
 The overlap that remains is intentional and cheap: `vault-lint` is three
-checks in a second, and `steward.py check` is the full sweep. Running
+checks in a second, and `mender.py check` is the full sweep. Running
 either is never wrong.
 
 ## 3. The run, in order
@@ -73,7 +73,7 @@ either is never wrong.
 **Step 1 — the script.**
 
 ```sh
-_tools/steward.py check
+_tools/mender.py check
 ```
 
 It heals what is provably safe (below), writes one card per finding into
@@ -102,7 +102,7 @@ because each has one right answer that just needs a sentence written:
 **Step 5 — re-run and leave it clean.**
 
 ```sh
-_tools/steward.py check --dry-run && _tools/vault-lint
+_tools/mender.py check --dry-run && _tools/vault-lint
 ```
 
 ## 4. The judgment half — writing a card
@@ -160,8 +160,8 @@ note can be edited after it is wrong, so dates are not proof.
 ## Answering
 
 Type what is true into `respuesta:` in the frontmatter above — in the
-panel's steward card, or in any editor. Then set `decision:` to `aplicar`
-or `descartar` and `estado:` to `respondido`. The next steward run reads it.
+panel's Mender card, or in any editor. Then set `decision:` to `aplicar`
+or `descartar` and `estado:` to `respondido`. The next mender run reads it.
 ```
 
 Six rules for writing one, each of which has a failure mode behind it:
@@ -179,7 +179,7 @@ Six rules for writing one, each of which has a failure mode behind it:
    it against" is worth flagging. "I have a feeling" is not; do not write
    that card at all.
 5. **Never put a broken target inside `[[ ]]`.** A card is a note, and the
-   next `vault-lint --links` will report the steward's own output as
+   next `vault-lint --links` will report the Mender's own output as
    damage. Write the target as `` `like-this` ``. Real `[[links]]` are for
    notes that actually exist — those you *want*, because they put the card
    next to its subject in the graph.
@@ -223,7 +223,7 @@ next run.
 
 This is the whole safety story of a thing that edits somebody's notes
 while they are asleep. It is stated identically in `conventions.md` §5 and
-at the top of `_tools/steward.py`, and it is written in three places
+at the top of `_tools/mender.py`, and it is written in three places
 because a future author will be tempted in at least one of them.
 
 | Safe, done automatically | Never automatic, always a card |
@@ -243,10 +243,10 @@ where "I checked git" is not something a user should have to do because
 of a tidy-up.
 
 **Never move a file with `mv`, `git mv`, `Bash`, or by writing a new file
-and deleting the old one.** Use `_tools/steward.py move`, always:
+and deleting the old one.** Use `_tools/mender.py move`, always:
 
 ```sh
-_tools/steward.py move "notes/Untitled 3.md" notes/wifi-needs-wpa-supplicant.md
+_tools/mender.py move "notes/Untitled 3.md" notes/wifi-needs-wpa-supplicant.md
 ```
 
 It refuses if the destination exists, if the new basename is used
@@ -260,7 +260,7 @@ stacked on the first.
 ## 6. Reading answers
 
 ```sh
-_tools/steward.py apply
+_tools/mender.py apply
 ```
 
 For each card the user marked `estado: respondido`:
@@ -295,8 +295,8 @@ The trick declares the schedule; it does not install it. Hand off to
 **`schedule-job`**, which writes the runner, the registry note in
 `.claude/jobs/` and the cron block:
 
-- **Name:** `vault-steward` — it must match `trabajo.estado.job` in
-  `.claude/tricks/vault-steward/trick.yaml`, or the panel's header shows
+- **Name:** `mender` — it must match `trabajo.estado.job` in
+  `.claude/tricks/mender/trick.yaml`, or the panel's header shows
   "no scheduled run installed" forever.
 - **Schedule:** `0 6 */3 * *`, in the user's timezone. `*/3` on
   day-of-month means days 1, 4, 7 … 28, 31 and then resets, so a month
@@ -306,10 +306,10 @@ The trick declares the schedule; it does not install it. Hand off to
   and free, and that is a legitimate cheaper option to offer the user:
   the script on the schedule, the agent run only when they ask. Offer it.
 - **Tools:** `Read,Write,Edit,Glob,Grep`, plus
-  `Bash(_tools/steward.py:*)` and `Bash(_tools/vault-lint:*)`. Nothing
+  `Bash(_tools/mender.py:*)` and `Bash(_tools/vault-lint:*)`. Nothing
   wider. The job edits notes; it has no reason to run anything else.
-- **Brief:** `.claude/skills/vault-steward/brief.md`, copied to
-  `.claude/jobs/vault-steward.prompt.md`. Do not paste it into the runner
+- **Brief:** `.claude/skills/mender/brief.md`, copied to
+  `.claude/jobs/mender.prompt.md`. Do not paste it into the runner
   script; a long brief quoted inside shell is how a job breaks silently
   six weeks later.
 - **Budget and timeout:** a real `--max-budget-usd` and a `timeout`. Both,
@@ -320,7 +320,7 @@ once, check the run row landed in the job note.
 
 ## 8. The panel side
 
-`.claude/tricks/vault-steward/` renders `steward/` as cards: the strange
+`.claude/tricks/mender/` renders `steward/` as cards: the strange
 thing, the question, the evidence on demand, a box to type what is true,
 and three buttons. It declares `vault.query`, `vault.read` and
 `vault.write` on `steward/` only, plus `trabajo.estado`. Its
@@ -346,7 +346,7 @@ Plain language, no YAML, every time:
   fact that all of it is recoverable with `git checkout`
 - **what it is asking**, in one line each, and that answering is not
   urgent and nothing expires
-- **the two ways to answer**: the panel's steward trick, or editing the
+- **the two ways to answer**: the panel's Mender trick, or editing the
   file in any editor including Obsidian on a phone
 - **what happens next**: a rename is carried out on the next run; an
   answer about what is true is picked up by this skill

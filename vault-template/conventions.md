@@ -5,7 +5,7 @@ area: meta
 estado: activo
 actualizado: 2026-08-15
 etiquetas: [meta, conventions]
-cuando-usar: "Read before creating a folder, naming a file, or arguing with something the steward flagged. This is the document it checks against."
+cuando-usar: "Read before creating a folder, naming a file, or arguing with something the Mender flagged. This is the document it checks against."
 ---
 
 # Vault conventions
@@ -16,12 +16,12 @@ to disagree with it.
 
 That second half matters. "Keep the vault organized" is not enforceable
 against anything. Every rule below is written so that a tool can decide
-pass or fail, and so that when the `vault-steward` skill flags your file
+pass or fail, and so that when the `mender` skill flags your file
 you can come here, read the rule, and either fix the file or change the
 rule. **Changing the rule is a legitimate outcome.** Edit this file; the
 checks follow it, not the other way round. The values a script actually
 reads are collected in [the numbers](#the-numbers) at the bottom — change
-them there and in `_tools/steward.py`'s header block together.
+them there and in `_tools/mender.py`'s header block together.
 
 Where this file and `CLAUDE.md` overlap, they must agree. If they don't,
 `CLAUDE.md` is the instruction and this is the specification; fix
@@ -42,11 +42,11 @@ vault/
 ├── notes/            atomic evergreen notes — the main body
 ├── projects/         one folder per ongoing project
 ├── reference/        external material worth keeping
-├── steward/          open findings from the vault-steward run
+├── steward/          open findings from the mender run
 ├── panel/            dashboards the panel renders
 ├── attachments/      non-markdown files with no better home
 ├── _templates/       note and index templates
-├── _tools/           vault-search, vault-lint, steward.py
+├── _tools/           vault-search, vault-lint, mender.py
 └── .claude/          skills, tricks, jobs — machinery, not content
 ```
 
@@ -104,7 +104,7 @@ structure:
   run.
 
 Splitting a flat folder is a **judgment call about what the groups are**,
-not a mechanical one. The steward flags the folder and proposes a
+not a mechanical one. The Mender flags the folder and proposes a
 grouping; it never invents subfolders on its own.
 
 ### Every folder with notes in it has an `index.md`
@@ -183,7 +183,7 @@ cuando-usar: "Read before pointing anything at the dev stack."  # required
 | `cuando-usar` | One sentence answering "when should a future reader open this file?" This is the retrieval key: search reads it first, and a note without it is effectively invisible. Never `"Sobre X"` / `"About X"`. |
 
 Machine-readable blocks — `widgets:` on a dashboard, `job:` on a job
-note, `finding:` on a steward finding — sit alongside these and are not
+note, `finding:` on a Mender finding — sit alongside these and are not
 part of the note schema.
 
 ### On the field names being Spanish
@@ -195,7 +195,7 @@ vault, and every tool here hardcodes `cuando-usar` as the retrieval key
 
 If your vault's language is not Spanish, rename them — but rename them
 **everywhere in one change**: `_templates/`, `_tools/vault-lint`,
-`_tools/vault-search`, `_tools/steward.py`, this file, `CLAUDE.md`, and
+`_tools/vault-search`, `_tools/mender.py`, this file, `CLAUDE.md`, and
 the panel's health check. A half-translated schema is worse than either
 language, because both halves then look like typos.
 
@@ -207,7 +207,7 @@ language, because both halves then look like typos.
   one.** A note nothing points at is invisible to a person browsing and
   to an agent walking the graph, no matter how good it is.
 - A wiki-link to a note that does not exist yet is **fine**. It marks
-  something worth writing. It is not an error and the steward will not
+  something worth writing. It is not an error and the Mender will not
   ask you to fix it — it will only ask about links whose target looks
   like something the vault already has under a slightly different name.
 - **Folders say where a thing lives. Tags say cross-cutting state. Links
@@ -220,14 +220,14 @@ language, because both halves then look like typos.
   live example of a broken one.** The link checker cannot tell an example
   from a mistake, so a page of good advice starts reporting itself as
   damage. That is why this section names targets in prose and why
-  `_templates/` is skipped by `vault-lint` entirely. The steward's own
+  `_templates/` is skipped by `vault-lint` entirely. The Mender's own
   cards follow the same rule.
 
 ---
 
-## 5. What the steward may change by itself
+## 5. What the Mender may change by itself
 
-The `vault-steward` skill checks this document every three days. The line
+The `mender` skill checks this document every three days. The line
 it must not cross:
 
 > **Anything that can lose information is a proposal, never an automatic
@@ -243,7 +243,7 @@ it must not cross:
 | | Resolve a contradiction between two notes |
 | | Create or remove a folder |
 
-A file is renamed only through `_tools/steward.py move`, which rewrites
+A file is renamed only through `_tools/mender.py move`, which rewrites
 every inbound link in the same operation or does nothing at all. A move
 that leaves the links behind is not a fix; it is a second problem on top
 of the first.
@@ -271,7 +271,7 @@ Everything a checker reads, in one place.
 | Allowed `estado` on a note | `activo`, `reemplazado` |
 | Minimum outbound links per note | 2 |
 | Minimum inbound links per note | 1 |
-| Open findings written per steward run | 25 |
+| Open findings written per mender run | 25 |
 | Folders exempt from the naming rules | `_templates/`, `_tools/`, `.claude/`, `.git/` |
 | Folders exempt from fan-out | `daily/`, `steward/` |
 

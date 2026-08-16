@@ -172,7 +172,7 @@ const FENCE = /^ {0,3}(```|~~~)/;
 
 /**
  * Which lines sit inside (or are the delimiter of) a fenced code block —
- * `_tools/steward.py`'s own `conventions.md` §4 rule for why this
+ * `_tools/mender.py`'s own `conventions.md` §4 rule for why this
  * matters applies here too: a code sample containing `**`, `#` or
  * `[[...]]` as literal text must not be read as formatting. `analyzeLine`
  * has no document-wide context (by design — it only sees one line), so

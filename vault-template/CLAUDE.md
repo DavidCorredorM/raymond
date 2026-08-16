@@ -143,10 +143,10 @@ vault/
 ├── notes/             atomic evergreen notes
 ├── projects/          one folder per ongoing project
 ├── reference/          external material worth keeping
-├── steward/           open findings from the steward — see below
+├── steward/           open findings from the Mender — see below
 ├── attachments/
 ├── _templates/        note and index templates
-├── _tools/            vault-search, vault-lint, steward.py
+├── _tools/            vault-search, vault-lint, mender.py
 └── .claude/
     ├── skills/         Claude Code skills — see below
     ├── tricks/         mini apps the panel renders — see below
@@ -157,7 +157,7 @@ vault/
 how to work; that one says what the result has to look like — folder
 depth and fan-out limits, the filename pattern, the required frontmatter
 fields and their allowed values, where indexes live — precisely enough
-for `_tools/steward.py` to check against and for a human to argue with.
+for `_tools/mender.py` to check against and for a human to argue with.
 When the two disagree, one of them is a bug; fix it rather than picking a
 side in your head. Adding a rule to the vault means writing it there.
 
@@ -210,8 +210,8 @@ something worth writing, not an error.
 |---|---|
 | `_tools/vault-search <terms>` | Tiered search, metadata before body |
 | `_tools/vault-lint` | Broken links, missing indexes, missing frontmatter |
-| `_tools/steward.py check` | The full sweep against `conventions.md`, plus the cards |
-| `_tools/steward.py move A B` | **The only way to move or rename a note.** Rewrites every inbound link in the same operation, or does nothing |
+| `_tools/mender.py check` | The full sweep against `conventions.md`, plus the cards |
+| `_tools/mender.py move A B` | **The only way to move or rename a note.** Rewrites every inbound link in the same operation, or does nothing |
 
 Run `vault-lint` after any bulk move, rename or import. Those are when
 links rot.
@@ -220,7 +220,7 @@ links rot.
 file and deleting the old one.** A move that does not rewrite every
 inbound `[[wiki-link]]` breaks the vault silently, and it is silent
 because nothing complains until somebody clicks a link months later.
-`steward.py move` handles all three link forms, carries the note's row
+`mender.py move` handles all three link forms, carries the note's row
 from one folder index to the other, and rolls back if any part fails.
 
 ## Skills
@@ -233,7 +233,7 @@ startup and fires them when a task matches:
 | `capture-note` | something worth keeping was learned |
 | `daily-log` | a session ends |
 | `vault-health` | after an import, or when things feel messy |
-| `vault-steward` | the vault is drifting: contradictions, stale facts, a reorganization, or answering a card |
+| `mender` | the vault is drifting: contradictions, stale facts, a reorganization, or answering a card |
 | `migrate-notes` | bringing an existing vault in |
 | `trick-creator` | the user wants a UI — a tracker, a form, a chart, a button that runs something |
 | `schedule-job` | the user wants something to run on a schedule, or asks what's scheduled |
@@ -257,27 +257,30 @@ never point a job's output at a generic "outputs" folder. Output belongs
 next to whatever it's about, chosen the way a person filing that document
 by hand would choose.
 
-## The steward
+## The Mender
 
-Every three days, `vault-steward` checks this vault against
+Every three days, `mender` checks this vault against
 `conventions.md` and leaves a queue of questions. Two halves, and the
 split is deliberate:
 
-- **`_tools/steward.py`** — a plain script, no model and no cost, for
+- **`_tools/mender.py`** — a plain script, no model and no cost, for
   everything with one right answer: broken links, filenames, duplicate
   basenames, missing indexes, orphans, empty folders, folders that have
   outgrown flat.
-- **the `vault-steward` skill** — the part that needs judgment:
+- **the `mender` skill** — the part that needs judgment:
   contradictions between notes, facts that have gone stale, a note filed
   in the wrong folder, and what the subfolders of an overgrown folder
   should actually be.
 
 Findings are **files**, one per finding, in `steward/`, with a free-text
-`respuesta:` field. Answer one in the panel's steward trick or in any
+`respuesta:` field. Answer one in the panel's Mender trick or in any
 editor — they are the same act, writing the same field in the same file.
+(The folder is still called `steward/` — a generic name for a review
+queue, not tied to the Mender's own name — so nothing here changed shape,
+only what runs it is called something else.)
 
 The line that must not move, stated here as well as in `conventions.md`
-§5 and in `_tools/steward.py`, because it is what makes a thing that
+§5 and in `_tools/mender.py`, because it is what makes a thing that
 edits your notes overnight safe:
 
 > **Anything that can lose information is a proposal, never an automatic
@@ -285,7 +288,7 @@ edits your notes overnight safe:
 > is automatic. Deleting a "duplicate" note is not, and never will be.
 
 `vault-health` is unchanged and still the right thing for "is my vault
-okay right now". The steward is the unattended, wider, slower one.
+okay right now". The Mender is the unattended, wider, slower one.
 
 ## Tricks
 

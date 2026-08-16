@@ -149,7 +149,7 @@ Sixteen API endpoints total, all documented at the top of
 capabilities go through). No endpoint exists that a human couldn't also
 achieve by editing a file directly — the API is a faster path to the
 same filesystem operations, not a separate capability. The two `move`
-endpoints are the network face of `_tools/steward.py move`, built to
+endpoints are the network face of `_tools/mender.py move`, built to
 agree with it rather than invent a second notion of "rename" — see
 `panel/server/src/rename.ts`.
 

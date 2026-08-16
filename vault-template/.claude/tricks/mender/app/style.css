@@ -1,47 +1,44 @@
-/* Both themes. The panel sends the theme in the hello message and again
- * in a `tema` event; `prefers-color-scheme` is the fallback for when the
- * app is opened outside the panel. Same palette as the starters. */
+/* Colors come from the panel's own palette, not from this file.
+ *
+ * bridge.js reads the host tokens carried in the hello message and again
+ * in every `tema` event (panel/docs/tricks-spec.md §6.2, §6.9) and writes
+ * them onto `:root` as `--host-*` custom properties — `--host-bg`,
+ * `--host-fg`, `--host-accent`, and so on, one per token the host sends,
+ * named after the same CSS variables `panel/web/src/styles.css` defines
+ * for the panel's own chrome. This file only maps this app's own local
+ * names onto those, with a static fallback for the one case a `--host-*`
+ * value is not there yet: the app opened standalone, outside the panel,
+ * where no hello ever arrives. Once the panel picks a new palette (or a
+ * user flips light/dark), these variables update with it automatically —
+ * nothing in this file has to change or know the palette's actual colors.
+ * `.claude/skills/trick-creator/SKILL.md` §6 writes this pattern up for
+ * any other trick that wants it. */
 :root {
-  --fondo: #ffffff;
-  --tarjeta: #ffffff;
-  --texto: #1c1c1e;
-  --tenue: #6b7280;
-  --linea: #e5e7eb;
-  --acento: #2563eb;
-  --alerta: #b91c1c;
-  --evidencia: #f6f7f9;
+  --fondo: var(--host-bg, #ffffff);
+  --tarjeta: var(--host-bg-raised, #ffffff);
+  --evidencia: var(--host-bg-raised, #f6f7f9);
+  --texto: var(--host-fg, #1c1c1e);
+  --tenue: var(--host-fg-muted, #6b7280);
+  --linea: var(--host-border, #e5e7eb);
+  --acento: var(--host-accent, #2563eb);
+  --acento-contraste: var(--host-accent-contrast, #ffffff);
+  --alerta: var(--host-broken, #b91c1c);
 }
+/* Fallback only — for the standalone case above, on a system in dark
+   mode. Superseded the instant a `--host-*` value exists, in either
+   theme, so this never fights the panel's own light/dark switch. */
 @media (prefers-color-scheme: dark) {
   :root {
-    --fondo: #17181b;
-    --tarjeta: #1d1f23;
-    --texto: #e8e8ea;
-    --tenue: #9aa0a6;
-    --linea: #2c2e33;
-    --acento: #7aa2f7;
-    --alerta: #f28b82;
-    --evidencia: #131418;
+    --fondo: var(--host-bg, #17181b);
+    --tarjeta: var(--host-bg-raised, #1d1f23);
+    --evidencia: var(--host-bg-raised, #131418);
+    --texto: var(--host-fg, #e8e8ea);
+    --tenue: var(--host-fg-muted, #9aa0a6);
+    --linea: var(--host-border, #2c2e33);
+    --acento: var(--host-accent, #7aa2f7);
+    --acento-contraste: var(--host-accent-contrast, #14181a);
+    --alerta: var(--host-broken, #f28b82);
   }
-}
-:root[data-tema="claro"] {
-  --fondo: #ffffff;
-  --tarjeta: #ffffff;
-  --texto: #1c1c1e;
-  --tenue: #6b7280;
-  --linea: #e5e7eb;
-  --acento: #2563eb;
-  --alerta: #b91c1c;
-  --evidencia: #f6f7f9;
-}
-:root[data-tema="oscuro"] {
-  --fondo: #17181b;
-  --tarjeta: #1d1f23;
-  --texto: #e8e8ea;
-  --tenue: #9aa0a6;
-  --linea: #2c2e33;
-  --acento: #7aa2f7;
-  --alerta: #f28b82;
-  --evidencia: #131418;
 }
 
 * {
@@ -189,7 +186,7 @@ button {
 button.primario {
   background: var(--acento);
   border-color: var(--acento);
-  color: #fff;
+  color: var(--acento-contraste);
 }
 
 button:focus-visible {

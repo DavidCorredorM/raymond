@@ -18,7 +18,7 @@ const IGNORE = [".git", ".obsidian", "node_modules", ".trash"];
  * A real temp vault, not a mock index — `executeNoteMove` reads and
  * writes real files (link rewrites, the index-row transplant), and the
  * whole point of this move being trustworthy is that it behaves the same
- * way `_tools/steward.py move` does against a real filesystem. `files`
+ * way `_tools/mender.py move` does against a real filesystem. `files`
  * is `{ relPath: content }`.
  */
 async function scratchVault(files: Record<string, string>): Promise<string> {
@@ -74,14 +74,14 @@ test("planNoteMove 409s on a basename collision anywhere in the vault — conven
   );
 });
 
-test("planNoteMove's basename check excludes dot-paths, matching steward.py move's own self.md filter", async () => {
+test("planNoteMove's basename check excludes dot-paths, matching mender.py move's own self.md filter", async () => {
   const dir = await scratchVault({
     "notes/cafe.md": "# Coffee\n",
     ".claude/skills/cafe/SKILL.md": "---\nname: cafe\n---\n",
   });
   const index = await buildIndex(dir, IGNORE);
   // Would collide if .claude/ paths counted — they must not, because
-  // steward.py move's own clash check doesn't see them either.
+  // mender.py move's own clash check doesn't see them either.
   assert.doesNotThrow(() => planNoteMove(index, "notes/cafe.md", "notes/moved/cafe.md"));
 });
 
