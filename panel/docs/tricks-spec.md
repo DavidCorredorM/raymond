@@ -187,7 +187,8 @@ HTTP by the frame, and paths are resolved with the same discipline
 ```yaml
 titulo: "Gastos del mes"
 descripcion: "Registro rápido de gastos, con gráfica."
-icono: "💸"
+icono: "chart"  # one of the panel's own icon names (web/src/icons/TrickIcon.tsx) —
+                # never an emoji; unrecognised values fall back to a generic icon
 
 app:
   entrada: "index.html"        # optional, default "index.html"

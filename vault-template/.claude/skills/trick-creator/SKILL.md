@@ -85,7 +85,11 @@ same file in every trick and there is nothing in it to tune.
 ```yaml
 titulo: "Monthly spend"          # required
 descripcion: "Log a spend, see the month's chart."
-icono: "💸"
+icono: "chart"                   # optional — one of the fixed set below;
+                                  # anything else (including an emoji)
+                                  # falls back to a generic icon in the
+                                  # panel. There is no emoji rendering
+                                  # path in the UI at all (owner's rule).
 
 app:
   entrada: "index.html"          # optional, default "index.html"
@@ -101,6 +105,15 @@ capacidades:                     # §5. Absent or empty = no bridge at all,
 acciones:                        # only if something runs a script — §9
 programacion:                    # only if something runs on a clock — §10
 ```
+
+`icono` picks one of the panel's own SVG icons — `checklist`, `play`,
+`form`, `chart`, `health`, or `tricks` (the generic default, also what's
+used when the field is missing or unrecognised). This is a fixed set on
+purpose: the panel draws every icon itself, one weight, so it never
+renders an emoji character coming from vault content — the owner's
+explicit rule for this app, not a style preference. Pick whichever name
+reads closest to what the trick does; there is no "add a new icon"
+option short of editing `panel/web/src/icons/Icon.tsx`.
 
 **Validation is unforgiving on purpose, and the failure is invisibility.**
 A manifest that breaks any rule below is skipped in the panel's trick

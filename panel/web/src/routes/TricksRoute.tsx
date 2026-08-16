@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { useTricks } from "../api/queries";
+import { TrickIcon } from "../icons/TrickIcon";
 
 /**
  * Real data from `GET /api/tricks` (tricks-spec.md). Clicking a card
@@ -60,7 +61,9 @@ export function TricksRoute() {
       <div className="tricks-grid">
         {list.map((t) => (
           <Link key={t.name} to={`/tricks/${encodeURIComponent(t.name)}`} className="trick-card">
-            <div className="trick-card-icon">{t.icono || "⚙️"}</div>
+            <div className="trick-card-icon">
+              <TrickIcon icono={t.icono} size={20} />
+            </div>
             <div className="trick-card-body">
               <div className="trick-card-title">{t.titulo}</div>
               {t.descripcion && <div className="trick-card-desc muted">{t.descripcion}</div>}

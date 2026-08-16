@@ -8,7 +8,7 @@
 
 titulo: "Vault steward"
 descripcion: "What the steward found: contradictions, stale facts, and moves it wants to make. Answer a card and the next run acts on it."
-icono: "🩺"
+icono: "health"
 
 app:
   entrada: "index.html"

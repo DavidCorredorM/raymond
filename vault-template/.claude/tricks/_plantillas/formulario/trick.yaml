@@ -11,7 +11,7 @@
 
 titulo: "Quick capture"
 descripcion: "A box to type a thing into. Each submission becomes a note."
-icono: "📝"
+icono: "form"
 
 app:
   entrada: "index.html"

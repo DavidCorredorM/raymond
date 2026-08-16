@@ -15,7 +15,7 @@
 
 titulo: "Run and report"
 descripcion: "Runs a declared script and shows what it printed."
-icono: "▶️"
+icono: "play"
 
 app:
   entrada: "index.html"

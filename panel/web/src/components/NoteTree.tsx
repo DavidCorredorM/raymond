@@ -11,6 +11,7 @@ import {
   type VaultTreeNode,
 } from "../lib/vaultTree";
 import { FolderUpload } from "./FolderUpload";
+import { Icon } from "../icons/Icon";
 
 function FolderView({
   node,
@@ -45,7 +46,9 @@ function FolderView({
                 onClick={() => toggle(f.path)}
                 aria-expanded={isExpanded}
               >
-                <span className={"note-tree-caret" + (isExpanded ? "" : " collapsed")}>▸</span>
+                <span className={"note-tree-caret" + (isExpanded ? "" : " collapsed")}>
+                  <Icon name="chevron-right" size={12} />
+                </span>
                 {f.name}
               </button>
             </FolderUpload>

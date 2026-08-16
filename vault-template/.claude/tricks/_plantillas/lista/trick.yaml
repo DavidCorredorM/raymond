@@ -9,7 +9,7 @@
 
 titulo: "Checklist"
 descripcion: "One note per item. Tick it off in the panel; the note changes on disk."
-icono: "☑️"
+icono: "checklist"
 
 app:
   entrada: "index.html"

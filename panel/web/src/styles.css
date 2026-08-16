@@ -349,9 +349,10 @@ a {
 }
 
 .note-tree-caret {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
   transition: transform 0.1s ease;
-  font-size: 0.7em;
+  color: var(--fg-muted);
 }
 
 .note-tree-caret.collapsed {
@@ -735,8 +736,15 @@ a {
 }
 
 .trick-card-icon {
-  font-size: 1.4rem;
-  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 7px;
+  color: var(--accent);
+  background: var(--accent-wash);
 }
 
 .trick-card-title {
@@ -751,6 +759,19 @@ a {
 .trick-detail {
   max-width: 760px;
   line-height: 1.6;
+}
+
+.trick-detail-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.85rem;
 }
 
 /* ---------------------------------------------------------------------

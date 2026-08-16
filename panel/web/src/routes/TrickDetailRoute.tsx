@@ -2,6 +2,8 @@ import { Link, useParams } from "react-router-dom";
 import { useTrick } from "../api/queries";
 import { WidgetErrorBoundary } from "../dashboards/WidgetErrorBoundary";
 import { TrickHost } from "../tricks/TrickHost";
+import { Icon } from "../icons/Icon";
+import { TrickIcon } from "../icons/TrickIcon";
 
 /**
  * One trick: the panel's own chrome, and the app mounted inside it.
@@ -50,10 +52,12 @@ export function TrickDetailRoute() {
   return (
     <div className="trick-detail page-scroll">
       <p>
-        <Link to="/tricks">&larr; Tricks</Link>
+        <Link to="/tricks" className="back-link">
+          <Icon name="chevron-right" size={14} style={{ transform: "rotate(180deg)" }} /> Tricks
+        </Link>
       </p>
-      <h1>
-        {trick.icono ? `${trick.icono} ` : ""}
+      <h1 className="trick-detail-title">
+        <TrickIcon icono={trick.icono} size={22} />
         {trick.titulo}
       </h1>
       {trick.descripcion && <p className="muted">{trick.descripcion}</p>}

@@ -11,7 +11,7 @@
 
 titulo: "Notes at a glance"
 descripcion: "Counts notes in one folder by a frontmatter field, and charts them."
-icono: "📊"
+icono: "chart"
 
 app:
   entrada: "index.html"
