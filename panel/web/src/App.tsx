@@ -10,6 +10,7 @@ import { HealthRoute } from "./routes/HealthRoute";
 import { HomeRoute } from "./routes/HomeRoute";
 import { TricksRoute } from "./routes/TricksRoute";
 import { TrickDetailRoute } from "./routes/TrickDetailRoute";
+import { SettingsRoute } from "./routes/SettingsRoute";
 import { useHealth } from "./api/queries";
 import { useI18nStore } from "./i18n/store";
 
@@ -64,6 +65,7 @@ const router = createBrowserRouter([
       },
       { path: "tricks", element: <TricksRoute /> },
       { path: "tricks/:name", element: <TrickDetailRoute /> },
+      { path: "settings", element: <SettingsRoute /> },
     ],
   },
 ]);
