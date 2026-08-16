@@ -15,12 +15,18 @@ import { FolderUpload } from "./FolderUpload";
 function FolderView({
   node,
   depth,
-  collapsed,
+  expanded,
   toggle,
 }: {
   node: VaultTreeNode;
   depth: number;
-  collapsed: Set<string>;
+  /**
+   * Which folders are open. Tracked as *expanded* rather than collapsed so
+   * the empty initial set means "everything folded" — and so a folder that
+   * appears later (a new upload, a note an agent just wrote) starts folded
+   * like its neighbours instead of springing open.
+   */
+  expanded: Set<string>;
   toggle: (path: string) => void;
 }) {
   const folders = sortedFolders(node);
@@ -29,7 +35,7 @@ function FolderView({
   return (
     <ul className="note-tree-list" style={{ paddingLeft: depth === 0 ? 0 : 12 }}>
       {folders.map((f) => {
-        const isCollapsed = collapsed.has(f.path);
+        const isExpanded = expanded.has(f.path);
         return (
           <li key={f.path}>
             <FolderUpload folder={f.path} label={f.path}>
@@ -37,14 +43,14 @@ function FolderView({
                 type="button"
                 className="note-tree-folder"
                 onClick={() => toggle(f.path)}
-                aria-expanded={!isCollapsed}
+                aria-expanded={isExpanded}
               >
-                <span className={"note-tree-caret" + (isCollapsed ? " collapsed" : "")}>▸</span>
+                <span className={"note-tree-caret" + (isExpanded ? "" : " collapsed")}>▸</span>
                 {f.name}
               </button>
             </FolderUpload>
-            {!isCollapsed && (
-              <FolderView node={f} depth={depth + 1} collapsed={collapsed} toggle={toggle} />
+            {isExpanded && (
+              <FolderView node={f} depth={depth + 1} expanded={expanded} toggle={toggle} />
             )}
           </li>
         );
@@ -107,13 +113,16 @@ export function NoteTree({
   /** Show skills/templates/tooling alongside the user's own notes. Off by default. */
   showSystem: boolean;
 }) {
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  // Everything starts folded: a real vault is 27 folders deep in places,
+  // and an all-open tree is a wall of text you have to read before you can
+  // navigate it. Opening a folder is one click; closing twenty is not.
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const visibleNotes = showSystem ? notes : notes.filter((n) => !n.isSystem);
   const visibleFiles = showSystem ? attachments : attachments.filter((a) => !a.isSystem);
   const tree = buildVaultTree(visibleNotes, visibleFiles);
 
   function toggle(path: string) {
-    setCollapsed((prev) => {
+    setExpanded((prev) => {
       const next = new Set(prev);
       if (next.has(path)) next.delete(path);
       else next.add(path);
@@ -131,7 +140,7 @@ export function NoteTree({
       <FolderUpload folder="" label="the vault root">
         <span className="note-tree-root-label">Vault root</span>
       </FolderUpload>
-      <FolderView node={tree} depth={0} collapsed={collapsed} toggle={toggle} />
+      <FolderView node={tree} depth={0} expanded={expanded} toggle={toggle} />
     </>
   );
 }
