@@ -1,7 +1,8 @@
 /**
- * The panel's whole HTTP surface. Sixteen endpoints:
+ * The panel's whole HTTP surface. Seventeen endpoints:
  *
  *   GET  /api/health              is it up, and what is it indexing
+ *   POST /api/settings            change a deployment setting (today: language)
  *   GET  /api/notes               every note, no bodies — the sidebar
  *   GET  /api/note?path=          one note: body, frontmatter, backlinks
  *   PUT  /api/note                write one note (the only note write path)
@@ -45,7 +46,7 @@ import { readFile, copyFile, mkdir, stat } from "node:fs/promises";
 import { existsSync, createReadStream, constants as fsConstants } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadConfig } from "./config.js";
+import { isSupportedLanguage, loadConfig, writeLanguageSetting } from "./config.js";
 import {
   buildIndex,
   readNote,
@@ -214,7 +215,33 @@ app.get("/api/health", async () => ({
   vault: cfg.vaultDir,
   notes: index.notes.size,
   attachments: index.attachments.size,
+  // The frontend's i18n store reads this on boot (panel/web/src/i18n) —
+  // this is the only place the UI language exists on the wire, matching
+  // how maxUploadBytes and vaultDir already surface through config.ts's
+  // loadConfig() rather than a second settings-only endpoint.
+  language: cfg.language,
 }));
+
+/**
+ * The one deployment setting a non-technical owner can change from the
+ * UI without SSHing in (README rule 3's UI surface for roadmap-adjacent
+ * work, owner's ask: "allows our customers to set their language
+ * easily"). Writes `config.json` (writeLanguageSetting) and updates the
+ * running server's in-memory `cfg` in the same request, so the very next
+ * `GET /api/health` — and therefore the next render — already reflects
+ * it. No restart needed; a page reload is enough, and most of the UI
+ * updates without even that since it reads the language from a store, not
+ * a one-time prop.
+ */
+app.post("/api/settings", async (req, reply) => {
+  const body = req.body as { language?: unknown } | undefined;
+  if (!isSupportedLanguage(body?.language)) {
+    return reply.code(400).send({ error: `language must be one of: en, es` });
+  }
+  writeLanguageSetting(body.language);
+  cfg.language = body.language;
+  return { ok: true, language: cfg.language };
+});
 
 /**
  * Everything the sidebar needs, without note bodies.
