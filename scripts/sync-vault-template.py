@@ -209,13 +209,31 @@ def git_head(repo: Path) -> str | None:
     return r.stdout.strip() if r.returncode == 0 else None
 
 
-def git_commit(vault: Path, message: str, dry: bool) -> bool:
-    """Stage everything and commit only if something is actually staged —
-    `git commit` with nothing to commit is an error, and treating that as
-    a failure would make a genuine no-op run look broken."""
-    if dry:
+def git_commit(vault: Path, message: str, paths: list[str], dry: bool) -> bool:
+    """Stage exactly `paths` — never `git add -A` — and commit only if
+    something is actually staged (`git commit` with nothing to commit is an
+    error, and treating that as a failure would make a genuine no-op run
+    look broken).
+
+    `-A` was the original shape and was wrong: found 2026-08-16 running this
+    against a real deployment for the first time. A human had, moments
+    earlier and entirely unrelated to this script, hand-created
+    `.claude/jobs/update-raymond.sh` and its registry note (the normal
+    `schedule-job` flow) and manually run the runner once to test it — which
+    is exactly the kind of thing genuinely being *in progress* in a vault
+    look like. `-A` swept all of it into this script's next commit anyway,
+    including a 0-byte `flock` lock file that should never be tracked at
+    all. Nothing was destroyed — this script never deletes content — but a
+    commit message that says "template sync: from base <sha>" attached to
+    files this script never touched is a lie about provenance, and the
+    failure mode generalizes beyond this one lucky case: anything at all
+    sitting uncommitted in the vault when this script's cron slot fires —
+    someone's own mid-edit note, equally — would have been swept in the
+    same way. A sync script's commits must contain only what it synced.
+    """
+    if dry or not paths:
         return False
-    run(["git", "add", "-A"], vault)
+    run(["git", "add", "--", *sorted(set(paths))], vault)
     diff = run(["git", "diff", "--cached", "--quiet"], vault)
     if diff.returncode == 0:
         return False  # nothing staged
@@ -455,12 +473,18 @@ Nothing else touches `{path}` until this is answered.
 # ---------------------------------------------------------------------------
 
 
-def resolve_answered(vault: Path, base: Path, baseline: dict[str, str], dry: bool) -> list[str]:
-    """-> list of report lines. Mutates `baseline` in place for anything resolved."""
-    lines = []
+def resolve_answered(
+    vault: Path, base: Path, baseline: dict[str, str], dry: bool
+) -> tuple[list[str], list[str]]:
+    """-> (report lines, vault-relative paths touched). Mutates `baseline` in
+    place for anything resolved. The second return value exists for the same
+    reason `updated`/`conflicts`/`seed_filled` do at the call site: `git_commit`
+    stages exactly what was written, never `-A` — see its docstring for why."""
+    lines: list[str] = []
+    touched: list[str] = []
     d = vault / STEWARD_DIR
     if not d.is_dir():
-        return lines
+        return lines, touched
     for p in sorted(d.glob("*.md")):
         text = p.read_text(encoding="utf-8", errors="replace")
         if f"kind: {CONFLICT_KIND}" not in text or "estado: respondido" not in text:
@@ -484,6 +508,7 @@ def resolve_answered(vault: Path, base: Path, baseline: dict[str, str], dry: boo
                 if not dry:
                     local_path.parent.mkdir(parents=True, exist_ok=True)
                     local_path.write_bytes(base_path.read_bytes())
+                    touched.append(rel)
                 baseline[rel] = sha1(base_path)
                 lines.append(f"conflict card {p.relative_to(vault)}: took upstream, {rel} overwritten")
             else:
@@ -499,7 +524,8 @@ def resolve_answered(vault: Path, base: Path, baseline: dict[str, str], dry: boo
             new_text = re.sub(r"^estado:.*$", f"estado: {new_estado}", text, count=1, flags=re.M)
             new_text = re.sub(r"^actualizado:.*$", f"actualizado: {date.today()}", new_text, count=1, flags=re.M)
             p.write_text(new_text, encoding="utf-8")
-    return lines
+            touched.append(str(p.relative_to(vault)))
+    return lines, touched
 
 
 # ---------------------------------------------------------------------------
@@ -528,12 +554,13 @@ def cmd_sync(vault: Path, base: Path, dry: bool) -> int:
     base_commit = git_head(base)
     base_repo = "https://github.com/DavidCorredorM/raymond"
 
-    resolved_lines = resolve_answered(vault, base, baseline, dry)
+    resolved_lines, resolved_touched = resolve_answered(vault, base, baseline, dry)
 
     updated: list[str] = []
     conflicts: list[str] = []
     removed_upstream: list[str] = []
     seed_diffs: list[tuple[str, str]] = []
+    seed_filled: list[str] = []
     new_baseline = dict(baseline)
 
     for rel, kind in sorted(classified.items()):
@@ -601,6 +628,7 @@ def cmd_sync(vault: Path, base: Path, dry: bool) -> int:
                 if not dry:
                     local_file.parent.mkdir(parents=True, exist_ok=True)
                     local_file.write_bytes(base_file.read_bytes())
+                seed_filled.append(rel)
             continue
         if bh is not None and lh != bh:
             seed_diffs.append((rel, kind))
@@ -641,7 +669,12 @@ def cmd_sync(vault: Path, base: Path, dry: bool) -> int:
             msg_lines += [f"  {l}" for l in resolved_lines]
         msg_lines.append("")
         msg_lines.append("Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>")
-        committed = git_commit(vault, "\n".join(msg_lines), dry)
+        # Every path this run actually wrote, and nothing else — see
+        # git_commit's own docstring for why `-A` was wrong here.
+        staged = [*updated, *conflicts, *seed_filled, *resolved_touched]
+        if marker_dirty:
+            staged.append(MARKER_PATH)
+        committed = git_commit(vault, "\n".join(msg_lines), staged, dry)
 
     # --- report ---
     tag = " (--dry-run, nothing written)" if dry else ""

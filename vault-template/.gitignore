@@ -1,0 +1,40 @@
+# Shipped from the base package, copied into every fresh vault at install
+# (bootstrap.sh) — see UPDATE-MANIFEST.md, classified machinery: this file
+# itself gets overwritten if the base package adds a pattern, exactly like
+# any other machinery path.
+#
+# Found missing 2026-08-16, the hard way: a deployment's first-ever
+# `sync-vault-template.py` run swept a 0-byte flock lock file into a
+# commit, because nothing had ever told git to ignore it. That specific
+# bug is fixed at the source (git_commit no longer stages `-A`), but this
+# file is the second layer — the one that holds even if some other tool,
+# or a human's own `git add -A` out of habit, tries the same thing.
+
+# schedule-job's own runs. The committed trail for a job is the `Runs`
+# table in its note, not raw stdout/stderr — see schedule-job SKILL.md §4.
+.claude/jobs/logs/
+# flock lock files — schedule-job's runners `exec 9>.claude/jobs/.<job>.lock`
+# every run. Transient by design; a 0-byte file with no content ever worth
+# a commit, and one that must exist independent of git's own state.
+.claude/jobs/.*.lock
+
+# vault-steward's own working state — regenerated wholesale by steward.py,
+# not machinery or seed (UPDATE-MANIFEST.md's "Excluded" section covers the
+# committed halves; these are the parts that are pure scratch space).
+steward/.*.lock
+
+# Python bytecode cache from _tools/*.py (linkcheck.py, steward.py,
+# vault-lint if it ever grows a Python path). Matches the base repo's own
+# root .gitignore — kept here too because this file ships *into* a vault
+# that has no other .gitignore of its own without this one.
+__pycache__/
+*.pyc
+
+# Credentials must never be inside a vault that is also a git repo —
+# panel/docs/tricks-spec.md's credentials note is the policy; this is the
+# structural backstop for it, same reasoning as the lock-file entry above.
+*credentials*.json
+*.key
+*.pem
+.env
+.env.*

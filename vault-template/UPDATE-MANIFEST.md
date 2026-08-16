@@ -66,6 +66,7 @@ _tools/*
 .claude/skills/vault-steward/brief.md
 .claude/tricks/_plantillas/**
 .claude/tricks/vault-steward/**
+.gitignore
 ```
 
 - **`_tools/*`** — `vault-lint`, `vault-search`, `steward.py`,
@@ -97,6 +98,14 @@ _tools/*
   changes this trick's app code or capabilities — a real conflict card,
   not a bug. Cheap and safe: worst case is one extra card to answer,
   never a silent loss of either side.
+- **`.gitignore`** — added 2026-08-16, the same day the gap it fills was
+  found: no fresh vault had one at all, so the first `sync-vault-template.py`
+  run against a real deployment tracked a 0-byte `flock` lock file
+  (`git_commit`'s own docstring has the full story — the fix is in two
+  places, the commit staging itself and this file, deliberately). A
+  deployment that adds its own line to this file will get a conflict
+  card the next time the base package's own patterns change, same as any
+  other machinery path — never a silent loss of a locally-added pattern.
 
 ## Seed
 
