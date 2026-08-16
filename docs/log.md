@@ -2382,3 +2382,206 @@ Chrome already renders the strict-authorized ones, since the fallback
 changes only whether a response is sent, never what's in it — carried in
 §14 as the same class of gap the original `Sec-Fetch` gate work already
 had for Firefox and Safari.
+
+## [2026-08-16] vault-steward renamed to Mender, and the trick handshake grew language + theme
+
+`vault-steward` — the trick, the skill, and `_tools/steward.py` — is now
+`mender`, `_tools/mender.py` throughout `vault-template/`, this repo's
+docs, and the panel's own comments (`rename.ts`, `tricks.ts`, `bridge.ts`,
+`sync-vault-template.py` all cite `mender.py move`/`mender.py`'s internals
+by name and had to move with it). "Mender" reads as a short, healing-
+adjacent name for a tool whose whole job is mending a vault's contradictions
+and stale facts, without reaching for clinical language a knowledge-vault
+maintenance tool has no business using; it is left untranslated in the
+Spanish trick title, the same way `Bridge`, `Raymond` and other proper
+nouns already are in this codebase. Checked first against
+`vault-template/CLAUDE.md` and the existing skill/trick names
+(`capture-note`, `daily-log`, `vault-health`, `migrate-notes`,
+`trick-creator`, `schedule-job`, `update-raymond`) — no collision.
+
+The `steward/` vault folder itself, its frontmatter vocabulary
+(`tipo: hallazgo`, `finding:`), and the `etiquetas: [steward, …]` tag were
+deliberately **not** renamed: that is data-model surface, a generic name
+for a review queue, not the actor's own name — renaming it would be a
+real data migration for a live deployment (folder contents, `carpeta:` in
+`trick.yaml`, every card's frontmatter) for no benefit this ask asked for.
+Historical entries above this one still say `vault-steward` and
+`steward.py`, on purpose — this is a log of what happened, not a document
+this rename gets to rewrite backward.
+
+### Owner's actual ask, and the gap underneath it
+
+"Change the name of the steward… and make sure it honors the language of
+the setting and also the color palette. It is currently speaking in
+English and with white ugly colors." The gap: the panel-wide language
+setting (English/Spanish, `Config.language`) and the theme both landed
+scoped to the panel's own chrome — reasonable for a trick, since a trick
+is a deployment's *own* content (the same boundary `docs/roadmap.md` §8
+draws for vault content generally) — but wrong for `mender`, which ships
+in the base package to every deployment, same as the rest of the UI. It
+had its own separate, English-only strings and its own separate,
+light-only, hardcoded-hex stylesheet that never read the panel's palette
+at all. That is what "white ugly colors" meant: not a bad color choice,
+a trick with no palette of its own reading anything from the host.
+
+### What was built
+
+**1. A documented, repeatable i18n pattern for `trick.yaml`.**
+`titulo`/`descripcion` now optionally accept `{ en, es }` in place of a
+plain string (`localizedStringSchema` in `panel/server/src/tricks.ts`),
+validated `.strict()` so an unknown language key or an empty object
+invalidates the manifest the same way a mistyped `capacidades` key
+already does — silent-wrong is worse than loud-invalid here, same as
+everywhere else in this schema. `resolveLocalized(value, language)`
+picks the right string with a graceful chain (requested language → `en`
+→ whichever is set), and is the *only* place that chain lives — both
+`listTricks` and `GET /api/tricks/:name` call it, so the wire shape
+callers already depend on (`titulo: string`) never changes; a client has
+no reason to know the manifest can hold two languages at all. Every
+other trick's plain-string `titulo` validates exactly as before —
+`localizedStringSchema`'s first arm is untouched. `panel/docs/tricks-spec.md`
+§4.2 and `trick-creator/SKILL.md` §4 both document the pattern now, not
+as a one-off for this trick.
+
+**2. Two new read-only fields in the trick handshake**
+(`panel/docs/tricks-spec.md` §6.2, `TrickHost.tsx`): `locale` — the
+deployment's *configured* language (`"en"`/`"es"`, read from the same
+`useI18nStore` the panel's own chrome reads via `useT`), replacing what
+used to be `navigator.language` and was never actually consumed by any
+starter; and `tokens` — the panel's live CSS custom properties (`--bg`,
+`--bg-raised`, `--fg`, `--fg-muted`, `--border`, `--accent`,
+`--accent-hover`, `--accent-contrast`, `--broken`, read straight off
+`styles.css`'s `:root` via `getComputedStyle`), resent whenever the panel's
+own `prefers-color-scheme` flips. `locale` also gets a live update: a new
+`ev: "locale"` event, fired from a direct `useI18nStore.subscribe` (not a
+hook — the mount effect must not re-run and remount the frame just
+because the language changed) whenever the owner changes it in Settings.
+
+**3. `bridge.js` — the file every trick starter copies byte-for-byte —
+now applies both automatically.** It writes `tokens` onto the trick's own
+`:root` as `--host-<kebab-name>` and sets `data-tema` to match, on the
+hello and on every `tema` event. A trick's `style.css` never touches
+`--host-*` directly: it maps its own variable names onto them once —
+`--fondo: var(--host-bg, #fallback)` — with the fallback only used
+standalone, outside the panel, where no hello ever arrives.
+`.claude/skills/trick-creator/SKILL.md` §6 writes the pattern up. Applied
+to all five apps that ship in the base package: `mender` and all four
+`_plantillas/` starters (`lista`, `boton`, `tablero`, `formulario` —
+the last has no `bridge.js` of its own, being a one-file trick by design,
+so it got the same twelve lines inlined). Every hardcoded button
+`color: #fff` became `var(--acento-contraste, #fff)`, fed by the new
+`tokens.accentContrast`.
+
+**4. `mender`'s own UI content is now bilingual**, English default,
+Spanish second — a plain lookup table in `app.js` (`STRINGS.en`/`STRINGS.es`),
+keyed by `hello.locale`, the same shape `panel/web/src/i18n/messages.ts`
+already uses for the panel's own chrome, sized down to what one trick
+needs. No library; a handful of strings does not need one.
+
+### Why this doesn't weaken the bridge's trust boundary
+
+Stated explicitly because the spec's own rigor for this boundary demands
+it (`bridge.ts`'s `capability_denied` discipline, `tricks.ts`'s
+re-derive-everything-server-side rule): `locale` and `tokens` are
+**strictly outbound, host → frame**, sent once at mount and resent on a
+theme or language change the host itself observed. The frame never sends
+either back, and nothing server-side (`bridge.ts`, `tricks.ts`) has a
+field named `tokens` or `locale` in any request path — there is no
+authority check anywhere that a hostile trick could feed a forged value
+to, because nothing ever asks. It is exactly the same trust shape `tema`
+already had before this change: a display hint the frame is free to
+ignore or paint over inside its own rectangle (spec §2.4), never a new
+way to influence what the host does.
+
+### The Angela's-deployment migration question
+
+Worked through, not solved: `scripts/sync-vault-template.py`'s
+`classify()` only ever iterates the *base checkout's* current file list
+against `UPDATE-MANIFEST.md`'s patterns. Since that manifest now says
+`.claude/tricks/mender/**` where it used to say
+`.claude/tricks/vault-steward/**`, a deployment that already has the old
+folder on disk (Angela's does) will never have it re-classified by any
+future sync — it is not "machinery the base package no longer ships"
+(that path only fires for a name a pattern still recognizes whose file
+vanished upstream), it is simply invisible to `classify()` from now on.
+The next sync on a vault like that adds the new `mender` trick and skill
+as ordinary new machinery and leaves the orphaned `vault-steward` folders
+sitting untouched beside them, with no conflict card and no signal
+anything is stale — the panel's Tricks list would show both "Vault
+steward" and "Mender" until a human notices and deletes the old folders
+by hand. If a cron job named `vault-steward` is already installed
+(`schedule-job`), the new trick's `trabajo.estado.job: "mender"` won't
+match it either, so its "last run" status reads "no scheduled run
+installed" until the job is renamed. Full writeup, including why this
+needs a `renamed-from:`-style mechanism the manifest doesn't have today
+rather than a one-off fix: `vault-template/UPDATE-MANIFEST.md`, under the
+`.claude/tricks/mender/**` bullet.
+
+### Verification
+
+`npm run build` and `npm test` clean in both `panel/server` (69 cases, 5
+new for the `{en, es}` schema and its resolution) and `panel/web` (232
+cases, unchanged — `TrickHost.tsx`'s protocol-adjacent logic stays
+covered through `protocol.test.ts`'s pure functions, matching this file's
+existing test split; no new test file was added for the component
+itself).
+
+Ran the real server (`node dist/index.js`) against a scratch vault
+holding the renamed `mender` trick plus an unmodified copy of
+`_plantillas/formulario` registered as a second trick. `GET /api/tricks`
+and `GET /api/tricks/:name` in English, then again after
+`POST /api/settings {"language":"es"}`: `mender`'s `titulo`/`descripcion`
+switched to the Spanish half of its manifest; `formulario`'s plain-string
+`titulo`/`descripcion` were byte-identical in both languages, confirming
+the backward-compatible arm untouched by an author who never opts in.
+Minted a mount token, fetched the entrada and a subresource, and called
+`POST /api/tricks/mender/bridge` with `vault.query` directly — all real
+HTTP against the real server, all succeeded.
+
+**No real browser was available in this session** (the Chrome extension
+bridge this environment normally uses to drive one wasn't connected), so
+the in-frame JavaScript — `bridge.js`'s token/theme application, `app.js`'s
+language table — was verified a different way: loaded the exact shipped
+`bridge.js` and `app.js` into a Node `vm` context wired up with a real
+`node:worker_threads` `MessageChannel` (not a mock — an actual
+`MessagePort` pair) and a minimal hand-rolled DOM (`getElementById`,
+`setAttribute`, `style.setProperty`), then dispatched a hello carrying
+`tema`, `locale` and `tokens` exactly as `TrickHost.tsx` builds it.
+Observed directly: `data-tema` set on the root element; every
+`tokens.*` field landed on `:root` as the matching `--host-<kebab-name>`
+custom property; the "Show answered" button, the footer and the empty-state
+paragraph rendered in Spanish for `locale: "es"` and English for
+`locale: "en"`. Then posted a second message shaped like the host's live
+`tema` event (`{ev:"tema", valor:"claro", tokens:{...}}`) over the already-
+open port and confirmed both `data-tema` and every `--host-*` value updated
+again — the theme-flip path, not just the initial mount. One real gotcha
+hit and worth recording for the next person who reaches for `vm` this way:
+`vm.createContext(sandbox)` does **not** make the vm's internal global
+object strictly `===` to the `sandbox` reference held outside — a naive
+`ev.source === window.parent` check (exactly what `bridge.js` itself uses
+to authenticate the host) silently failed until the *true* internal
+global was fetched with `vm.runInContext("window", sandbox)` and used for
+`ev.source` instead of the outer `sandbox` object. Not independently
+re-verified: real CSSOM/layout rendering, and Safari/Firefox — the same
+class of gap `panel/docs/tricks-spec.md` §14 already carries for the rest
+of the trick sandbox.
+
+Reproduced the Angela's-deployment migration gap directly rather than
+only reasoning about it: built a second scratch vault with
+`.claude/tricks/vault-steward/` and `.claude/skills/vault-steward/` (a
+plain directory rename of a pre-2026-08-16 install, simulating a
+deployment that synced before this change), then ran
+`sync-vault-template.py sync` against the real `vault-template/` checkout.
+Confirmed exactly the predicted shape: the sync added
+`.claude/tricks/mender/**` and `.claude/skills/mender/**` as ordinary new
+machinery, raised no conflict card, and left `.claude/tricks/vault-steward/`
+sitting untouched on disk — `ls .claude/tricks` after the sync shows both
+`mender` and `vault-steward` side by side. `sync-vault-template.py sync
+--dry-run` against a vault that already had the new paths (a fresh copy of
+`vault-template/`) reported 56 classified paths, 0 unclassified, and
+nothing to commit. `vault-lint` reported no broken links and no missing
+indexes on the same fresh scratch vault. `mender.py check` (not dry-run)
+regenerated `steward/index.md` with the new "Mender findings" title and
+wrote a real card, which the running server's live index picked up and
+served correctly through `vault.query` on the bridge — confirming the
+rename didn't disturb the Mender's own read/write path into `steward/`.

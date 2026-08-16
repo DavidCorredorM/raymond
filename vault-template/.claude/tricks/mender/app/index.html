@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Vault steward</title>
+    <title>Mender</title>
     <!-- Relative paths only. The frame has no network: a CDN link, a web
          font or a remote image loads nothing at all. -->
     <link rel="stylesheet" href="style.css" />
@@ -24,16 +24,21 @@
 
     <div id="tarjetas"></div>
 
+    <!-- Filled by app.js from the locale table once the hello arrives
+         (hello.locale) — see that file's STRINGS.emptyState. The English
+         text here is only what a slow first paint could show for a
+         fraction of a second. -->
     <p id="vacio" hidden>
-      Nothing to review. Either the vault is tidy or the steward has not run
-      yet — <code>_tools/steward.py check</code> from the vault root, or the
-      <code>vault-steward</code> skill for the half that needs judgment.
+      Nothing to review. Either the vault is tidy or the Mender has not run
+      yet — <code>_tools/mender.py check</code> from the vault root, or the
+      <code>mender</code> skill for the half that needs judgment.
     </p>
 
-    <footer class="sutil">
+    <!-- Filled by app.js (STRINGS.footer), same reason as #vacio above. -->
+    <footer id="pie" class="sutil">
       Each card is a file in <code>steward/</code>. Answering here writes to
       that file and nothing else; renames and moves happen on the next
-      steward run, where they leave a diff.
+      mender run, where they leave a diff.
     </footer>
 
     <script src="bridge.js"></script>

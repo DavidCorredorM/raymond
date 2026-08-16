@@ -15,6 +15,6 @@ panel/*/dist/
 .env.*
 .claude/worktrees/
 
-# Python bytecode — _tools/steward.py imports linkcheck.py as a module
+# Python bytecode — _tools/mender.py imports linkcheck.py as a module
 __pycache__/
 *.pyc

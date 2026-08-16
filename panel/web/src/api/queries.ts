@@ -116,7 +116,7 @@ export function useSaveNote() {
 
 /**
  * Rename or move a note (owner's ask #4) — `POST /api/note/move`, the
- * network face of `_tools/steward.py move`. `panel/server/src/rename.ts`
+ * network face of `_tools/mender.py move`. `panel/server/src/rename.ts`
  * does the actual work (link rewriting, the index-row transplant,
  * rollback on partial failure); this mutation just calls it and
  * invalidates every query whose answer the move could have changed —

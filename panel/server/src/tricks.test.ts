@@ -11,6 +11,7 @@ import {
   mintMountToken,
   readTrickManifest,
   resolveAppFile,
+  resolveLocalized,
   TrickError,
 } from "./tricks.js";
 
@@ -149,7 +150,7 @@ test("a v1 manifest has no app: block, so it is simply invalid", async () => {
 test("an invalid manifest is skipped from the listing, with the reason handed to the caller to log", async () => {
   const dir = await scratchVault({ viejo: V1_MANIFEST, nuevo: V2_MANIFEST });
   const skipped: string[] = [];
-  const list = await listTricks(dir, (name) => skipped.push(name));
+  const list = await listTricks(dir, "en", (name) => skipped.push(name));
   assert.deepEqual(
     list.map((t) => t.name),
     ["nuevo"],
@@ -184,6 +185,66 @@ test("app.alto defaults, and app: with nothing in it is still an app trick", asy
   assert.equal(manifest.app.entrada, "index.html");
   assert.equal(manifest.app.alto, 480);
   assert.deepEqual(manifest.capacidades, {});
+});
+
+// ---------------------------------------------------------------------------
+// titulo/descripcion as { en, es } (spec §4.2) — backward compatible with
+// the plain-string form every trick before this used, and every trick a
+// deployment's own trick-creator writes unless it opts in.
+// ---------------------------------------------------------------------------
+
+const LOCALIZED_MANIFEST = `titulo:
+  en: "Monthly spend"
+  es: "Gasto mensual"
+descripcion:
+  en: "English body"
+  es: "Cuerpo en español"
+app: {}
+`;
+
+test("a plain-string titulo/descripcion still validates and passes through unchanged", async () => {
+  const dir = await scratchVault({ x: V2_MANIFEST });
+  const manifest = await readTrickManifest(dir, "x");
+  assert.equal(resolveLocalized(manifest.titulo, "en"), "New");
+  assert.equal(resolveLocalized(manifest.titulo, "es"), "New");
+});
+
+test("an { en, es } titulo/descripcion resolves to the deployment's own language", async () => {
+  const dir = await scratchVault({ x: LOCALIZED_MANIFEST });
+  const manifest = await readTrickManifest(dir, "x");
+  assert.equal(resolveLocalized(manifest.titulo, "en"), "Monthly spend");
+  assert.equal(resolveLocalized(manifest.titulo, "es"), "Gasto mensual");
+  assert.equal(resolveLocalized(manifest.descripcion, "es"), "Cuerpo en español");
+});
+
+test("an { en, es } form missing the requested language falls back to en, then es", async () => {
+  const dir = await scratchVault({
+    x: 'titulo:\n  es: "Solo español"\napp: {}\n',
+    y: 'titulo:\n  en: "Only English"\napp: {}\n',
+  });
+  const soloEs = await readTrickManifest(dir, "x");
+  assert.equal(resolveLocalized(soloEs.titulo, "en"), "Solo español"); // no en: falls back to es
+  const soloEn = await readTrickManifest(dir, "y");
+  assert.equal(resolveLocalized(soloEn.titulo, "es"), "Only English"); // no es: falls back to en
+});
+
+test("an empty { } or an unknown language key invalidates the manifest", async () => {
+  const dir = await scratchVault({
+    vacio: "titulo: {}\napp: {}\n",
+    tipo: 'titulo:\n  fr: "Bonjour"\napp: {}\n',
+  });
+  await assert.rejects(() => readTrickManifest(dir, "vacio"), TrickError);
+  await assert.rejects(() => readTrickManifest(dir, "tipo"), TrickError);
+});
+
+test("listTricks resolves titulo/descripcion for the language it's given", async () => {
+  const dir = await scratchVault({ x: LOCALIZED_MANIFEST });
+  const en = await listTricks(dir, "en");
+  const es = await listTricks(dir, "es");
+  assert.equal(en[0].titulo, "Monthly spend");
+  assert.equal(es[0].titulo, "Gasto mensual");
+  assert.equal(en[0].descripcion, "English body");
+  assert.equal(es[0].descripcion, "Cuerpo en español");
 });
 
 // ---------------------------------------------------------------------------

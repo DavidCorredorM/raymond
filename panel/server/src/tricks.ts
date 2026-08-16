@@ -5,6 +5,7 @@ import { randomBytes } from "node:crypto";
 import { load as loadYaml } from "js-yaml";
 import { z } from "zod";
 import { isUnder, trickDataDir } from "./writepath.js";
+import type { Language } from "./config.js";
 
 /**
  * A trick is a folder under `.claude/tricks/<name>/` with a `trick.yaml`
@@ -97,6 +98,44 @@ const appSchema = z
 
 export const DEFAULT_ENTRADA = "index.html";
 export const DEFAULT_ALTO = 480;
+
+/**
+ * `titulo`/`descripcion` (spec §4.2): either a plain string — every trick
+ * written before this, and every trick a deployment's own `trick-creator`
+ * writes, unless its author opts in — or `{ en, es }`, so a trick that
+ * ships in the base package (today: `mender`, the only one) can honour the
+ * same language setting the rest of the panel's chrome already does
+ * (`panel/web/src/i18n/messages.ts`, `Config.language`). Backward
+ * compatible by construction: the plain-string arm is unchanged, so every
+ * existing manifest keeps validating exactly as it did.
+ */
+const localizedStringSchema = z.union([
+  z.string(),
+  z
+    .object({ en: z.string().optional(), es: z.string().optional() })
+    .strict()
+    .refine((v) => typeof v.en === "string" || typeof v.es === "string", {
+      message: "a localized string must set at least one of: en, es",
+    }),
+]);
+export type LocalizedString = z.infer<typeof localizedStringSchema>;
+
+/**
+ * Picks the right string for the deployment's current language, with a
+ * graceful chain rather than a hard failure: the requested language, then
+ * `en` (this repo's own default and the one every other trick and doc is
+ * written in), then whichever of the two is set. `undefined` in, `undefined`
+ * out, so a missing optional `descripcion` stays missing rather than
+ * becoming the string `"undefined"`.
+ */
+export function resolveLocalized(
+  value: LocalizedString | undefined,
+  language: Language,
+): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value === "string") return value;
+  return value[language] ?? value.en ?? value.es ?? "";
+}
 
 /**
  * The complete capability vocabulary (spec §7). This list is the
@@ -201,8 +240,8 @@ export interface TrickCapabilities {
  * see.
  */
 const trickManifestSchema = z.object({
-  titulo: z.string(),
-  descripcion: z.string().optional(),
+  titulo: localizedStringSchema,
+  descripcion: localizedStringSchema.optional(),
   icono: z.string().optional(),
   app: appSchema,
   capacidades: z.record(z.string(), z.unknown()).nullish(),
@@ -219,6 +258,7 @@ export type TrickManifest = Omit<z.infer<typeof trickManifestSchema>, "app" | "c
 
 export interface TrickSummary {
   name: string;
+  /** Resolved for the deployment's current language — never the raw `{en, es}` form. */
   titulo: string;
   descripcion?: string;
   icono?: string;
@@ -447,9 +487,14 @@ export async function readTrickManifest(
  * `vault.ts` applies to a single malformed note. `onSkip`, if given, is
  * called so the caller can log *why* (the panel's Fastify logger, at the
  * route level) rather than the failure vanishing silently.
+ *
+ * `language` resolves `titulo`/`descripcion` (§4.2) before they leave this
+ * function — the summary's whole point is to be the wire shape, and the
+ * wire shape has always been a plain string.
  */
 export async function listTricks(
   vaultDir: string,
+  language: Language,
   onSkip?: (name: string, err: unknown) => void,
 ): Promise<TrickSummary[]> {
   const tricksRoot = join(vaultDir, TRICKS_DIR);
@@ -467,8 +512,8 @@ export async function listTricks(
       const manifest = await readTrickManifest(vaultDir, e.name);
       out.push({
         name: e.name,
-        titulo: manifest.titulo,
-        descripcion: manifest.descripcion,
+        titulo: resolveLocalized(manifest.titulo, language) ?? "",
+        descripcion: resolveLocalized(manifest.descripcion, language),
         icono: manifest.icono,
         alto: manifest.app.alto,
         capacidades: Object.keys(manifest.capacidades) as CapabilityKey[],
@@ -699,7 +744,7 @@ export function appRequestGate(dest: unknown, site: unknown): AppGate {
 
 /**
  * Fallback for browsers that send **no** `Sec-Fetch-*` headers at all —
- * found live, 2026-08-15, on the one real deployment: `vault-steward`
+ * found live, 2026-08-15, on the one real deployment: `mender`
  * failed with `appRequestGate`'s own refusal message, logged with
  * `dest:null, site:null`, over a genuine Tailscale MagicDNS address. Not a
  * dev artifact — a real device on the tailnet (older Safari before 16.4,

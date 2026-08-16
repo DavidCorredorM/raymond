@@ -115,6 +115,24 @@ explicit rule for this app, not a style preference. Pick whichever name
 reads closest to what the trick does; there is no "add a new icon"
 option short of editing `panel/web/src/icons/Icon.tsx`.
 
+`titulo`/`descripcion` may also be `{ en, es }` instead of a plain
+string:
+
+```yaml
+titulo:
+  en: "Monthly spend"
+  es: "Gasto mensual"
+```
+
+For a deployment's own trick this is almost never worth it — the vault's
+language is whatever the owner writes in, never translated for them
+(`docs/roadmap.md` §8), and a plain string is the normal, correct answer.
+Reach for `{ en, es }` only for a trick meant to work the same in any
+deployment regardless of language — which today means only tricks that
+ship in the base package. An unrecognised language key or an empty object
+invalidates the manifest the same way a mistyped `capacidades` key does.
+Full rule: `panel/docs/tricks-spec.md` §4.2.
+
 **Validation is unforgiving on purpose, and the failure is invisibility.**
 A manifest that breaks any rule below is skipped in the panel's trick
 list and 404s on its detail route — the trick does not appear at all. The
@@ -194,7 +212,12 @@ addEventListener("message", (ev) => {
   if (port) return;                                     // one port per mount
   port = ev.ports[0];
   port.onmessage = (e) => { /* responses and events */ };
-  // ev.data also carries: trick, capacidades (manifest keys), tema, locale
+  // ev.data also carries: trick, capacidades (manifest keys), tema,
+  // locale (the deployment's configured language, "en"/"es" — not
+  // navigator.language), tokens (the panel's live CSS custom properties:
+  // bg, bgRaised, fg, fgMuted, border, accent, accentHover,
+  // accentContrast, broken). Copy app/bridge.js (§3) rather than writing
+  // this by hand and it applies both automatically — see §6a.
 });
 ```
 
@@ -253,6 +276,72 @@ after an overnight run "nobody was watching" is the normal case, not an
 edge case. Never write from a render path, though — that is the one way
 to turn the event into a loop.
 
+## 6a. Looking like part of the app: theme and language
+
+Two more things arrive in the hello, unrelated to the bridge and needing
+no `capacidades` entry — read-only display context every trick gets for
+free, the same way `tema` always has (`panel/docs/tricks-spec.md` §4.2,
+§6.2, §6.9):
+
+- **`tokens`** — the panel's own live colors: `bg`, `bgRaised`, `fg`,
+  `fgMuted`, `border`, `accent`, `accentHover`, `accentContrast`,
+  `broken`. `bridge.js` (§3 — copy it, don't write this by hand) already
+  writes each one onto the trick's own document as a `--host-<name>` CSS
+  custom property, kebab-cased (`tokens.bgRaised` → `--host-bg-raised`),
+  on the hello and again on every `tema` event. All `style.css` has to do
+  is map its own variable names onto those once, with a static fallback
+  for the one case a `--host-*` value isn't there yet — opened standalone,
+  outside the panel:
+
+  ```css
+  :root {
+    --fondo: var(--host-bg, #ffffff);
+    --texto: var(--host-fg, #1c1c1e);
+    --acento: var(--host-accent, #2563eb);
+    --acento-contraste: var(--host-accent-contrast, #ffffff);
+    /* …the rest of this app's own palette, same pattern */
+  }
+  ```
+
+  Do this instead of hardcoding hex values in `style.css`, even a
+  light/dark pair behind `prefers-color-scheme` — a trick with its own
+  fixed colors is the "white ugly colors" complaint this pattern exists
+  to prevent: it stops matching the panel the moment the panel's own
+  palette changes, light or dark. Every starter in `_plantillas/` follows
+  this now; copy the pattern from whichever one is closest.
+
+- **`locale`** — the deployment's *configured* language (`"en"`/`"es"`,
+  from Settings — not `navigator.language`). For a trick with its own UI
+  strings, keep a small lookup table in `app.js`, English default,
+  Spanish second, keyed by `hello.locale` — the same shape
+  `panel/web/src/i18n/messages.ts` uses for the panel's own chrome, sized
+  down to what one trick needs:
+
+  ```js
+  var STRINGS = {
+    en: { save: "Save", empty: "Nothing here yet." },
+    es: { save: "Guardar", empty: "Todavía no hay nada." },
+  };
+  var L = STRINGS.en;
+  Bridge.ready(function (hello) {
+    L = STRINGS[hello.locale] || STRINGS.en;
+    // set every hardcoded English string in the DOM from L here
+  });
+  ```
+
+  No library — a handful of strings does not need one, and this app has
+  exactly two languages to support, not an open-ended localization
+  problem (same reasoning `panel/web/src/i18n/messages.ts`'s own file
+  comment gives for the panel's chrome). `mender`'s `app.js` is a worked
+  example if a trick's strings are numerous enough to want the pattern
+  spelled out at length.
+
+`locale` also changes live, over a new `ev: "locale"` event, if the owner
+changes it in Settings while the trick is mounted — handle it the same
+way a `tema` event is already handled, by re-reading `hello.locale`'s
+replacement (`ev.valor`) and updating the DOM, not by assuming the first
+hello is the only one that ever arrives.
+
 ## 7. The environment — it is not a normal page
 
 | Works | Does not, and how it fails |
@@ -260,7 +349,7 @@ to turn the event into a loop.
 | Relative URLs, subfolders, images, stylesheets, classic scripts | `fetch`, `XMLHttpRequest`, `WebSocket`, `EventSource`, `sendBeacon` — blocked. Some throw, some return success and send nothing |
 | `<script type="module">` as-is; dynamic `import()` **if the entry `<script>` has `crossorigin`** | Any remote URL: a CDN, Google Fonts, a remote image, a CSS `@import` from a URL. There is no network. Ship the file under `app/`, or inline it as a `data:` URI |
 | Canvas, SVG, Web Animations, pointer events, drag and drop, blob Workers, `eval`, `new Function` | `localStorage`, `sessionStorage`, `indexedDB`, `caches`, `document.cookie` — every one throws `SecurityError`, and an unguarded one at the top of a script kills the whole file. Persist through `estado` |
-| `prefers-color-scheme`, plus the `tema` value in the hello and a `tema` event | `window.open`, form submission, navigating the top window — all refused. There is no `allow-forms`, so use a button and the bridge, not a `<form>` |
+| `prefers-color-scheme`, plus `tema`/`tokens`/`locale` in the hello and their events (§6a) | `window.open`, form submission, navigating the top window — all refused. There is no `allow-forms`, so use a button and the bridge, not a `<form>` |
 | Inline `<style>` and inline `<script>` — a one-file trick is a first-class shape | Navigating the frame itself: the panel treats a second `load` as "this trick navigated away", unmounts it and says so |
 
 The frame does not resize itself. Set `app.alto` to what the app needs

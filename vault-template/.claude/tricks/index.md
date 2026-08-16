@@ -27,17 +27,17 @@ sandbox.
 
 | Trick | What it does |
 |---|---|
-| `vault-steward` | The steward's review queue. One card per thing the vault steward wants a human to decide — a contradiction between two notes, a fact that looks stale, a rename it wants to make. Type what is true; the next run acts on it. |
+| `mender` | The Mender's review queue. One card per thing the Mender wants a human to decide — a contradiction between two notes, a fact that looks stale, a rename it wants to make. Type what is true; the next run acts on it. |
 
 **One trick ships in the base package**, and it is the exception rather
-than a change of policy: the steward is a default piece of machinery
+than a change of policy: the Mender is a default piece of machinery
 whose queue needs a UI, not an example of what a trick can be. Everything
 else here is mechanism — write your own with `trick-creator`, starting
 from `_plantillas/`.
 
-The steward trick is unusual in one more way worth copying: it needs no
+The Mender trick is unusual in one more way worth copying: it needs no
 editing after install. Its `carpeta` is `steward/`, which
-`_tools/steward.py` creates and fills, so unlike the starters there is no
+`_tools/mender.py` creates and fills, so unlike the starters there is no
 path in it to rewrite.
 
 ## What's in this folder

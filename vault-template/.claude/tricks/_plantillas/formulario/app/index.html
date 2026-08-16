@@ -5,43 +5,38 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Quick capture</title>
     <style>
+      /* Colors come from the panel's own palette, not from this file. The
+         inline script below writes the host's tokens (from the hello and
+         every `tema` event, panel/docs/tricks-spec.md §6.2, §6.9) onto
+         `:root` as `--host-*`. This block maps this app's own variable
+         names onto those, with a static fallback for the one case a
+         `--host-*` value isn't there yet: opened standalone, outside the
+         panel. See `.claude/skills/trick-creator/SKILL.md` §6. */
       :root {
-        --fondo: #fff;
-        --texto: #1c1c1e;
-        --tenue: #6b7280;
-        --linea: #e5e7eb;
-        --acento: #2563eb;
-        --alerta: #b91c1c;
+        --fondo: var(--host-bg, #fff);
+        --texto: var(--host-fg, #1c1c1e);
+        --tenue: var(--host-fg-muted, #6b7280);
+        --linea: var(--host-border, #e5e7eb);
+        --acento: var(--host-accent, #2563eb);
+        --acento-contraste: var(--host-accent-contrast, #fff);
+        --alerta: var(--host-broken, #b91c1c);
         --ok: #15803d;
       }
+      /* Fallback only, for the standalone case above on a system in dark
+         mode — superseded the instant a --host-* value exists, either
+         theme. `--ok` has no host equivalent (there is no "success" token
+         in the panel's palette today), so it stays a static pair. */
       @media (prefers-color-scheme: dark) {
         :root {
-          --fondo: #17181b;
-          --texto: #e8e8ea;
-          --tenue: #9aa0a6;
-          --linea: #2c2e33;
-          --acento: #7aa2f7;
-          --alerta: #f28b82;
+          --fondo: var(--host-bg, #17181b);
+          --texto: var(--host-fg, #e8e8ea);
+          --tenue: var(--host-fg-muted, #9aa0a6);
+          --linea: var(--host-border, #2c2e33);
+          --acento: var(--host-accent, #7aa2f7);
+          --acento-contraste: var(--host-accent-contrast, #14181a);
+          --alerta: var(--host-broken, #f28b82);
           --ok: #81c995;
         }
-      }
-      :root[data-tema="claro"] {
-        --fondo: #fff;
-        --texto: #1c1c1e;
-        --tenue: #6b7280;
-        --linea: #e5e7eb;
-        --acento: #2563eb;
-        --alerta: #b91c1c;
-        --ok: #15803d;
-      }
-      :root[data-tema="oscuro"] {
-        --fondo: #17181b;
-        --texto: #e8e8ea;
-        --tenue: #9aa0a6;
-        --linea: #2c2e33;
-        --acento: #7aa2f7;
-        --alerta: #f28b82;
-        --ok: #81c995;
       }
       * {
         box-sizing: border-box;
@@ -82,7 +77,7 @@
       button {
         border: 1px solid var(--acento);
         background: var(--acento);
-        color: #fff;
+        color: var(--acento-contraste);
         border-radius: 6px;
         padding: 7px 14px;
         font: inherit;
@@ -138,6 +133,28 @@
         var pending = new Map();
         var seq = 0;
 
+        // Same token-application rule bridge.js documents in full: the
+        // hello and every `tema` event carry `tema` and `tokens` (the
+        // panel's own CSS custom properties, live off styles.css); write
+        // them onto :root as --host-* so the <style> block above can map
+        // its own variable names onto them. See trick-creator SKILL.md §6.
+        function aplicarContexto(msg) {
+          var tema = msg.tema || msg.valor;
+          if (tema) document.documentElement.setAttribute("data-tema", tema);
+          var tokens = msg.tokens;
+          if (tokens) {
+            for (var k in tokens) {
+              if (!Object.prototype.hasOwnProperty.call(tokens, k)) continue;
+              if (tokens[k]) {
+                document.documentElement.style.setProperty(
+                  "--host-" + k.replace(/[A-Z]/g, function (c) { return "-" + c.toLowerCase(); }),
+                  tokens[k],
+                );
+              }
+            }
+          }
+        }
+
         addEventListener("message", function (ev) {
           if (ev.source !== window.parent) return;
           if (!ev.data || ev.data.raymond !== "trick-bridge") return;
@@ -145,14 +162,18 @@
           port = ev.ports[0];
           port.onmessage = function (e) {
             var m = e.data;
-            if (!m || m.v !== 1 || m.ev) return;
+            if (!m || m.v !== 1) return;
+            if (m.ev) {
+              if (m.ev === "tema") aplicarContexto(m);
+              return;
+            }
             var p = pending.get(m.id);
             if (!p) return;
             pending.delete(m.id);
             if (m.ok) p.resolve(m.result);
             else p.reject(m.error || { code: "internal", message: "refused" });
           };
-          if (ev.data.tema) document.documentElement.setAttribute("data-tema", ev.data.tema);
+          aplicarContexto(ev.data);
         });
 
         function call(op, params) {

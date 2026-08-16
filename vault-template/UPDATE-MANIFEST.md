@@ -25,7 +25,7 @@ since the last sync and the base package's copy has changed, the sync
 overwrites it and commits. If the deployment's copy *has* been modified
 since the last sync, that is a conflict — never silently overwritten,
 always turned into a card in `steward/` for a human to answer, the same
-shape `vault-steward` already uses (see `scripts/sync-vault-template.py`'s
+shape `mender` already uses (see `scripts/sync-vault-template.py`'s
 own docstring for exactly how "modified since the last sync" is
 computed, and why that is a different question from "different from
 upstream").
@@ -44,7 +44,7 @@ worth having.
 
 A third bucket exists below for paths that are neither — content the
 base package ships as a starting stub but that a running deployment's
-*own machinery* (`_tools/steward.py`) regenerates locally, wholesale,
+*own machinery* (`_tools/mender.py`) regenerates locally, wholesale,
 every time it runs. Syncing those against the base package would compare
 apples to a script's own leftovers.
 
@@ -63,13 +63,13 @@ change, only genuinely new *kinds* of path need a new line here.
 ```
 _tools/*
 .claude/skills/*/SKILL.md
-.claude/skills/vault-steward/brief.md
+.claude/skills/mender/brief.md
 .claude/tricks/_plantillas/**
-.claude/tricks/vault-steward/**
+.claude/tricks/mender/**
 .gitignore
 ```
 
-- **`_tools/*`** — `vault-lint`, `vault-search`, `steward.py`,
+- **`_tools/*`** — `vault-lint`, `vault-search`, `mender.py`,
   `linkcheck.py`. Named explicitly in roadmap §13. These are read-only
   tools invoked by path; there is no supported way to customize them in
   place other than the field-name rename `conventions.md` §3 describes
@@ -80,9 +80,9 @@ _tools/*
   different skill behavior writes a *new* skill rather than editing a
   shipped one in place — the same reason `_plantillas/` is copied-from,
   never edited-in-place, below.
-- **`.claude/skills/vault-steward/brief.md`** — not a `SKILL.md`, so the
+- **`.claude/skills/mender/brief.md`** — not a `SKILL.md`, so the
   glob above misses it; the brief is the agent prompt `schedule-job`
-  copies into `.claude/jobs/vault-steward.prompt.md` at install time (a
+  copies into `.claude/jobs/mender.prompt.md` at install time (a
   copy the sync mechanism never touches — see "Out of scope" below), and
   it ships and evolves with the skill, not per-deployment.
 - **`.claude/tricks/_plantillas/**`** — the four starter trick apps.
@@ -91,13 +91,44 @@ _tools/*
   original. Contrast with `_templates/*` below, which *is* edited in
   place; that distinction is the whole reason these two look similar and
   sort into different buckets.
-- **`.claude/tricks/vault-steward/**`** — named explicitly in roadmap
-  §13 ("`vault-steward` itself"). Its own header comment invites
+- **`.claude/tricks/mender/**`** — named explicitly in roadmap
+  §13 ("`mender` itself"). Its own header comment invites
   changing `titulo`/`icono` for cosmetics, which means a deployment that
   does so will show as "locally modified" the next time the base package
   changes this trick's app code or capabilities — a real conflict card,
   not a bug. Cheap and safe: worst case is one extra card to answer,
   never a silent loss of either side.
+
+  **A known gap, not solved here: a deployment synced before 2026-08-16
+  has `.claude/tricks/vault-steward/**` and `.claude/skills/vault-steward/**`
+  on disk, and this manifest no longer names either path.** `classify()`
+  only ever iterates the *base checkout's* current file list (this file's
+  own header: "Patterns are matched against the base checkout's
+  `vault-template/` filesystem, not the deployment's"), so a path the base
+  package stopped shipping never enters `classified` at all — it is not
+  "machinery the base package no longer ships" (`removed_upstream`, which
+  only fires for a path still *named* by a pattern whose file disappeared),
+  it is simply invisible, forever, to every future sync. The practical
+  result on a vault like that: the next sync adds the new
+  `.claude/tricks/mender/**` and `.claude/skills/mender/**` files
+  (ordinary "new machinery path, fill it in"), while the old
+  `vault-steward` folders sit untouched next to them — no conflict card,
+  no cleanup, no signal anything is stale. The panel's Tricks list would
+  show both "Vault steward" (English-only, the old hardcoded colors) and
+  "Mender" side by side until a human notices and deletes the old folders
+  by hand. Separately, if that deployment already has a cron job named
+  `vault-steward` (`schedule-job`, per the old `mender/SKILL.md` §7), the
+  new trick's `trabajo.estado.job: "mender"` will not match it, and its
+  "last run" status shows "no scheduled run installed" until the job is
+  renamed — also a manual step. Neither is data loss and neither is
+  silent corruption, but a rename is exactly the shape this manifest's
+  machinery/seed model was not built to migrate: it diffs paths, and a
+  rename is not a diff, it is two paths that are secretly the same thing.
+  A real fix would need the manifest to name a path's *history*, not just
+  its current location (e.g. a `renamed-from:` line the sync reads before
+  `classify()` runs, so it can find and retire the old path explicitly)
+  — worth building before the base package renames anything else, not
+  worth building for one rename after the fact.
 - **`.gitignore`** — added 2026-08-16, the same day the gap it fills was
   found: no fresh vault had one at all, so the first `sync-vault-template.py`
   run against a real deployment tracked a 0-byte `flock` lock file
@@ -151,14 +182,14 @@ Classified seed for two reasons in the document's own text: it invites
 editing directly ("Changing the rule is a legitimate outcome. Edit this
 file"), and the field-name rename section names it as one of the files
 a deployment edits in place. But **`conventions.md` § "The numbers" and
-`_tools/steward.py`'s header constants are the same data, kept in two
-files on purpose** ("change them there and in `_tools/steward.py`'s
-header block together" — `conventions.md` §"The numbers"). `steward.py`
+`_tools/mender.py`'s header constants are the same data, kept in two
+files on purpose** ("change them there and in `_tools/mender.py`'s
+header block together" — `conventions.md` §"The numbers"). `mender.py`
 is machinery and can be silently updated by a sync the moment its base
 value changes upstream; `conventions.md` is seed and never is. If the
 base package ever changes a default (say, the fan-out limit from 20 to
 25) and a deployment has never touched either file, the sync will update
-`steward.py`'s constant and leave `conventions.md` describing the old
+`mender.py`'s constant and leave `conventions.md` describing the old
 number — a real drift the sync cannot close, because closing it would
 mean writing into a file this manifest promises never to touch. Flagged
 here rather than solved: the sync's seed-diff report is exactly the
@@ -171,7 +202,7 @@ correct outcome, not a gap.
 A deployment appends a row here for every trick `trick-creator` writes,
 which makes it deployment content by the same test as the folder
 indexes above. But it currently *also* documents the one machinery trick
-(`vault-steward`) that ships in the base package. If the base package
+(`mender`) that ships in the base package. If the base package
 ever ships a second default trick (`docs/roadmap.md` §12 says this
 would need arguing for, but doesn't rule it out), that new trick's files
 would sync in as machinery under `.claude/tricks/<name>/**` — but
@@ -188,8 +219,8 @@ steward/historial/index.md
 ```
 
 Both are shipped as harmless install-time stubs (their own text says so:
-"Regenerated by `_tools/steward.py`; edits to this file are lost") and
-regenerated **wholesale** by `_tools/steward.py check` every time it
+"Regenerated by `_tools/mender.py`; edits to this file are lost") and
+regenerated **wholesale** by `_tools/mender.py check` every time it
 runs on a live deployment. A difference between the base package's stub
 and a deployment's real, steward-generated version is expected on every
 single run and means nothing — reporting it as a seed diff would be
@@ -221,9 +252,9 @@ isn't in the base package — machinery sync is *only* ever "overwrite a
 path the base package still ships," never "make the vault's tree match
 the base package's tree."
 
-`.claude/jobs/vault-steward.prompt.md` (the brief, copied at install
-time per `vault-steward` SKILL.md §7) is likewise out of scope even
-though its source (`.claude/skills/vault-steward/brief.md`) is
+`.claude/jobs/mender.prompt.md` (the brief, copied at install
+time per `mender` SKILL.md §7) is likewise out of scope even
+though its source (`.claude/skills/mender/brief.md`) is
 machinery: the copy is deployment state the moment `schedule-job` writes
 it, same as any other job's prompt file. If the brief changes upstream,
 the skill's own copy goes stale silently — a real gap, not one this

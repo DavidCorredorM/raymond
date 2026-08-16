@@ -235,7 +235,8 @@ degrade-gracefully behaviour, unchanged.
 
 | Field | Rule |
 |---|---|
-| `titulo` | required, string |
+| `titulo` | required, string **or** `{ en, es }` — §4.2 |
+| `descripcion` | optional, string **or** `{ en, es }` — §4.2 |
 | `app` | **required.** A trick is a document the panel mounts; a manifest naming none cannot be honoured. `app: {}` is fine — the defaults apply |
 | `app.entrada` | single relative path, no `..`, must resolve under `app/`, must end `.html`. Default `index.html` |
 | `app.alto` | integer 120–2000. Default 480 |
@@ -250,6 +251,52 @@ Manifests are read fresh from disk on every request that depends on them.
 Never cached, never taken from a request body. This is already how
 `runTrickAction` works and it is the reason the client can only ever select
 an index.
+
+### 4.2 `titulo`/`descripcion` as `{ en, es }`
+
+A trick most deployments write is that deployment's *own* content, and
+`docs/roadmap.md` §8 already draws the line: the vault's language is
+whatever the owner writes it in, never translated for them. A plain
+string stays the whole story for those tricks, and always will.
+
+A trick that ships in the **base package** — today, only `mender` — is
+different: it is machinery, the same as the rest of the panel's chrome,
+and the panel's chrome already honours the deployment's configured
+language (`Config.language`, `panel/web/src/i18n/messages.ts`). A base
+trick whose own name and description stayed English regardless would be
+the one piece of UI that didn't follow that setting.
+
+```yaml
+titulo:
+  en: "Monthly spend"
+  es: "Gasto mensual"
+descripcion:
+  en: "Log a spend, see the month's chart."
+  es: "Registra un gasto, mira la gráfica del mes."
+```
+
+Rules, enforced in `readTrickManifest` (`panel/server/src/tricks.ts`):
+
+- Either field may be a plain string (unchanged from before this section
+  existed) **or** an object with `en` and/or `es` keys, each a string.
+  Nothing else validates — an unrecognised language key, or an object with
+  neither key set to a string, invalidates the whole manifest, the same
+  "loud, not silent" posture §4.1's `capacidades.*` rule already takes for
+  a typo'd capability name.
+- The server resolves to a plain string **before either field ever
+  reaches a client** — `GET /api/tricks` and `GET /api/tricks/:name` both
+  answer with `titulo`/`descripcion` as the string for the deployment's
+  current `Config.language`, falling back to `en` and then to whichever
+  of the two is set if the requested language is missing. A client has no
+  reason to know the manifest can hold two languages at all; the wire
+  shape (`titulo: string`) never changes.
+- A trick with a plain-string `titulo` needs no change and behaves
+  exactly as it always has, in every language the panel is configured
+  for — this is additive, not a breaking change to the manifest schema.
+
+This is a general pattern, not a one-off for `mender`: any future trick
+that ships in the base package, or any deployment's own trick whose
+author wants it, can use the same `{ en, es }` form.
 
 ---
 
@@ -439,7 +486,7 @@ to `http://example.com/pwned` produced no network request (§10.6).
 
 ### 5.5 The fallback for a browser that sends no `Sec-Fetch-*` at all
 
-**Found live, 2026-08-15**, on the one real deployment: `vault-steward`
+**Found live, 2026-08-15**, on the one real deployment: `mender`
 failed to open with `appRequestGate`'s own refusal message —
 "trick apps are only served to browsers that send Sec-Fetch-Dest; they
 are mounted in the panel, not fetched directly" — logged with `dest:null,
@@ -612,9 +659,59 @@ The hello message — the only `window`-level message in the protocol:
   "trick": "gastos",
   "capacidades": ["vault.query", "vault.read", "vault.write", "estado", "script.run"],
   "tema": "oscuro",
-  "locale": "es-CO"
+  "locale": "es",
+  "tokens": {
+    "bg": "#191b1d",
+    "bgRaised": "#212528",
+    "fg": "#eae3d5",
+    "fgMuted": "#a79d8d",
+    "border": "#343a3e",
+    "accent": "#9dbecf",
+    "accentHover": "#b6d0de",
+    "accentContrast": "#14181a",
+    "broken": "#e09a83"
+  }
 }
 ```
+
+`locale` and `tokens`, added 2026-08-16 alongside the `mender` rename (the
+owner's ask for it: "honors the language of the setting and also the color
+palette"). Both are **read-only context, not a capability** — every trick
+gets them whether or not it declares any `capacidades:`, the same as
+`tema` already worked, and neither requires a manifest entry to receive.
+Security note, stated because this touches the same trust boundary §2 and
+§6.7 spend the rest of this document establishing: both are strictly
+outbound, host → frame, and nothing server-side (`bridge.ts`, `tricks.ts`)
+ever reads a field named `tokens` or `locale` from a request — there is no
+authority decision anywhere for a hostile trick to feed a forged value
+into, because nothing asks. A trick is free to ignore either, or to lie
+with them inside its own rectangle (§2.4), exactly as it always could with
+`tema`.
+
+- **`locale`** — the deployment's own *configured* language
+  (`Config.language`, the same value `GET /api/health` exposes and the
+  Settings route writes), **not** the visiting browser's
+  `navigator.language`. A trick's own strings should follow what the
+  owner set for the panel's chrome, not whatever locale the device that
+  opened it happens to report. Today always `"en"` or `"es"`
+  (`SUPPORTED_LANGUAGES`, `panel/server/src/config.ts`); a third language
+  extending that list needs no protocol change here.
+- **`tokens`** — the panel's own CSS custom properties
+  (`panel/web/src/styles.css`'s `:root`), read live with
+  `getComputedStyle` at handshake time: whatever palette is actually
+  running, light or dark, without the host ever hand-picking a hex value
+  and without a trick ever hardcoding one. The keys mirror the CSS
+  variable names (`bg` ↔ `--bg`, `bgRaised` ↔ `--bg-raised`, and so on);
+  see §6.9 for the exact set and for what a trick does with them.
+
+Both are resent, alongside a fresh `tokens` read, whenever the thing they
+describe actually changes while the trick is mounted — `tema`/`tokens` on
+the existing `ev: "tema"` event (§6.4, unchanged shape, `tokens` merely
+added to it) when the host's own `prefers-color-scheme` flips, and a new
+`ev: "locale"` event (`{ "v": 1, "ev": "locale", "valor": "en" }`) when
+the owner changes the language in Settings — the one case with no browser
+media query to observe, so it is a store subscription in the host rather
+than an event listener.
 
 Frame side:
 
@@ -670,7 +767,8 @@ Event, host → frame, unsolicited, no `id`:
 
 ```json
 { "v": 1, "ev": "datos.cambiaron", "paths": [".claude/tricks/gastos/data/cafe.md"] }
-{ "v": 1, "ev": "tema", "valor": "claro" }
+{ "v": 1, "ev": "tema", "valor": "claro", "tokens": { "bg": "#faf4e8", "…": "…" } }
+{ "v": 1, "ev": "locale", "valor": "es" }
 ```
 
 - `id` is chosen by the frame and echoed verbatim. The host must treat it
@@ -871,6 +969,31 @@ unit-tested there.
 - **`tema` comes from `prefers-color-scheme`**, sent in the hello and
   again as an event on change. The panel has no theme switcher of its own;
   when it gets one, that is where this reads from.
+- **`tokens` (§4.2, §6.2) is `panel/web/src/styles.css`'s `:root` custom
+  properties, read with `getComputedStyle(document.documentElement)` at
+  the same moment `tema` is captured**, so it always reflects whatever
+  palette and light/dark state the panel is actually showing — the host
+  never hand-picks a value and the frame never has to. The set sent
+  today: `bg`, `bgRaised`, `fg`, `fgMuted`, `border`, `accent`,
+  `accentHover`, `accentContrast`, `broken` (`TOKEN_VARS` in
+  `TrickHost.tsx`, one map from field name to the exact `--xxx` CSS
+  variable it reads). `bridge.js` — the file every starter copies
+  byte-for-byte — writes each one onto the trick's own `:root` as
+  `--host-<kebab-case-name>` automatically, on the hello and again on
+  every `tema` event; a trick's `style.css` maps its own variable names
+  onto those once (`--fondo: var(--host-bg, #fallback)`) and never reads
+  `--host-*` directly. `.claude/skills/trick-creator/SKILL.md` §6 has the
+  pattern written up for an app that isn't built from a starter.
+- **`locale` (§4.2, §6.2) is `Config.language`, read from the same
+  `useI18nStore` the panel's own chrome reads via `useT`.** It changes
+  only when the owner changes it in Settings — no browser media query
+  exists for it the way `prefers-color-scheme` exists for `tema` — so the
+  host holds a direct `useI18nStore.subscribe` for the life of the mount
+  and emits `ev: "locale"` on an actual change, rather than polling or
+  listening for a DOM event. A trick with its own strings switches on
+  this the way `mender`'s `app.js` does: an `en`/`es` lookup table keyed
+  by `hello.locale`, matching `panel/web/src/i18n/messages.ts`'s own
+  shape sized down to what one trick needs — no library.
 - **The window-level `message` listener exists to log and discard.** §6.3
   requires that ops arriving that way carry no weight. A listener that
   names the fact and refuses to act on it is harder to accidentally turn
@@ -1066,7 +1189,7 @@ system anybody maintained.
 
 The base package ships the **mechanism, not examples**, so its cost here
 was docs and code, not data. (Amended 2026-08-15: there is now exactly one
-trick in `vault-template/`, `vault-steward`. It is default machinery whose
+trick in `vault-template/`, `mender`. It is default machinery whose
 review queue needs a UI, not an example of what a trick can be, and it is
 v2 already. The rule is "no examples", not "no tricks".) The one real
 deployment's only v1 trick was an unfinished test and was deleted the same
@@ -1725,7 +1848,7 @@ renegotiated locally.
   one rule for the whole app — and `carpeta` is enforced purely as a
   containment test rather than as a silent prefix. This was the direction
   that required no starter to change: all three apps that pass a path
-  (`lista`, `formulario`, `vault-steward`) were already building
+  (`lista`, `formulario`, `mender`) were already building
   vault-relative ones, either straight out of a query result or as
   `CARPETA + "/" + name`. The server was the odd one out.
 

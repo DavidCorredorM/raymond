@@ -18,7 +18,7 @@ different reasons, and this skill is the front door to both:
    forever, and the two must never be confused (see §3).
 
 Both are plain scripts — deterministic, no model, no cost — the same
-reasoning `schedule-job` §1 and `vault-steward` §1 already make: an
+reasoning `schedule-job` §1 and `mender` §1 already make: an
 agent run for something a script can decide is slower, costs money, and
 gives a different answer on Tuesday than it gave on Monday. **This
 skill's job is to run them and explain the result in plain language**,
@@ -54,7 +54,7 @@ should be able to decide "yes, do it" from your summary alone.
 
 Run the app-code update first, the vault sync second — order matters
 only a little (the sync script is what ships the *next* version of
-itself and of `_tools/steward.py`, so pulling app code first means a
+itself and of `_tools/mender.py`, so pulling app code first means a
 same-day scheduled run uses the newer tool to sync with), but nothing
 breaks if they happen the other way. Run **both**, even if the first one
 stops with an error: they update genuinely separate things (app code vs.
@@ -77,8 +77,8 @@ After running, tell the user, every time, in this order:
    automatically — say what changed upstream so the user can decide
    whether to copy any of it in by hand.
 3. **Anything that needs a decision** — a conflict card (see §3), same
-   shape and same place as a `vault-steward` finding: `steward/`,
-   `tipo: hallazgo`. If the `vault-steward` trick is installed, these
+   shape and same place as a `mender` finding: `steward/`,
+   `tipo: hallazgo`. If the `mender` trick is installed, these
    cards already render there — same UI, same "type what you want and
    set decision" flow, because the fields are literally the same five.
 4. **Nothing is urgent.** A pull that stops for a real reason (a build
@@ -108,7 +108,7 @@ module docstring at the top of `scripts/sync-vault-template.py`.
 
 ## 4. Answering a conflict card
 
-Same as any `vault-steward` finding — a note in `steward/`,
+Same as any `mender` finding — a note in `steward/`,
 `tipo: hallazgo`, five fields to fill in:
 
 - `respuesta:` — plain words. "take theirs" (or "upstream"/"base
@@ -129,7 +129,7 @@ file changes while its card is open.
 
 This skill is what a human runs by hand and what a cron job runs
 unattended, and installing the unattended part is **`schedule-job`'s**
-job, the same way `vault-steward` hands its own schedule off rather than
+job, the same way `mender` hands its own schedule off rather than
 inventing a crontab-writer of its own. Do not write cron entries here.
 
 **Kind: script**, not agent — both underlying scripts are fully
@@ -138,8 +138,8 @@ already-answered card), so there is no judgment step that needs a model
 in the loop, and `schedule-job` §1's own advice applies directly: a
 script is cheaper, faster, and gives the same answer every time.
 
-**Cadence: daily**, by default, at an hour before `vault-steward`'s own
-`0 6 */3 * *` (e.g. `0 5 * * *` — 05:00) so a same-morning steward run
+**Cadence: daily**, by default, at an hour before `mender`'s own
+`0 6 */3 * *` (e.g. `0 5 * * *` — 05:00) so a same-morning mender run
 picks up a same-morning tool update rather than the reverse. Reasoning
 for daily specifically, since `schedule-job` §2 asks for it to be
 justified rather than assumed:
