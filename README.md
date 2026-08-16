@@ -142,13 +142,16 @@ Tailscale. Three destinations:
   argument. Design and the measurements behind it:
   `panel/docs/tricks-spec.md`.
 
-Fourteen API endpoints total, all documented at the top of
-`panel/server/src/index.ts`: notes (list/read/write), attachments
-(list/download/upload), the link graph, vault health, and tricks
+Sixteen API endpoints total, all documented at the top of
+`panel/server/src/index.ts`: notes (list/read/write/move), attachments
+(list/download/upload/move), the link graph, vault health, and tricks
 (list/read/run, plus serving a trick's app and the one bridge funnel its
 capabilities go through). No endpoint exists that a human couldn't also
 achieve by editing a file directly — the API is a faster path to the
-same filesystem operations, not a separate capability.
+same filesystem operations, not a separate capability. The two `move`
+endpoints are the network face of `_tools/steward.py move`, built to
+agree with it rather than invent a second notion of "rename" — see
+`panel/server/src/rename.ts`.
 
 Four of them are not boring, and each has a written trust boundary next
 to the code rather than in a doc nobody opens: `POST /api/tricks/:name/run`
@@ -185,9 +188,13 @@ Verified by actually running it, not by reading the code and assuming:
       jobs view so the two share one parser
 - [ ] Dashboard write actions (`set`, `crear_nota`, `archivar`) — parse
       correctly, don't execute yet
-- [ ] Live-preview editing (hide markdown syntax except on the cursor's
-      line) — deferred, a genuinely separate chunk of work from the
-      plain syntax-highlighted editor that *is* built
+- [x] Live-preview editing (hide markdown syntax except on the cursor's
+      line) — built 2026-08-15: headings, bold, italic, inline code,
+      strikethrough and wiki-links, with fenced code blocks correctly
+      excluded. Verified in a real browser: the delimiters hide when the
+      cursor is elsewhere and reappear on the active line, saving still
+      writes plain markdown. Not covered: blockquotes, tables, and
+      interactive checkbox widgets (`- [ ]` stays plain text)
 - [ ] Scheduled jobs — the `schedule-job` skill ships (rule 4), but no
       job has run on the reference build yet, and the panel has no view
       of what's scheduled or whether it last failed (`docs/roadmap.md`
