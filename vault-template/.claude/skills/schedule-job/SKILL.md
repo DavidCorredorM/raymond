@@ -294,6 +294,7 @@ above; this is the checklist for when a job silently doesn't run.
 | Fires at the wrong hour | Cron uses the system timezone | `CRON_TZ=<TZ>` in the crontab, and record the timezone in the job note |
 | Two copies running at once | A slow run overlapped the next tick | `flock -n` on a lock file (§3) |
 | Job disappeared | Someone ran `crontab <file>` and replaced the whole thing | Always `crontab -l > backup` first, and only ever edit through the marked blocks (§5, §8) |
+| `systemctl --user ...` fails from the job, works fine typed by hand | `XDG_RUNTIME_DIR` isn't set outside a real login session — `Linger=yes` alone does not set it, and it is the specific thing an interactive SSH session gets for free from `pam_systemd` that cron does not. Found 2026-08-16: a job's build succeeded, the restart step failed silently, and running the exact same command by hand minutes later "just worked" — which makes this look like a fluke instead of the guaranteed failure it actually is | `export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"` before any `systemctl --user` call in the runner. Confirmed with `env -i` that this one export is the whole fix — systemd derives `DBUS_SESSION_BUS_ADDRESS` from it, nothing else is needed |
 
 If a job did not run at all and none of the above explains it, check the
 system cron log (`journalctl -u cron` on Ubuntu) before assuming the

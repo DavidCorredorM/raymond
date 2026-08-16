@@ -243,6 +243,16 @@ if git diff --name-only "$BUILD_REF" "$AFTER" | grep -q '^panel/'; then
 
   echo "$AFTER" > "$BUILD_MARKER"
   log "build OK — restarting raymond-panel"
+  # `systemctl --user` needs XDG_RUNTIME_DIR to find the right systemd user
+  # instance — an interactive SSH login gets it for free from pam_systemd,
+  # cron does not, `Linger=yes` alone does not either. Found 2026-08-16 the
+  # hard way: a real scheduled run built successfully, left the new dist/ on
+  # disk, and then failed the restart silently until someone happened to SSH
+  # in and run the same command by hand — which "just worked," making the
+  # cron failure look like a fluke rather than the guaranteed failure it
+  # actually was. Reproduced with `env -i` and confirmed this one export is
+  # the whole fix; systemd derives DBUS_SESSION_BUS_ADDRESS from it.
+  export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
   if systemctl --user restart raymond-panel >>"$LOG" 2>&1; then
     log "OK  raymond-panel restarted"
   else
