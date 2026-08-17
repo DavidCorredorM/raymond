@@ -257,13 +257,7 @@ async function runOp(
     case "script.run":
       return opScriptRun(ctx, name, caps["script.run"]!, params);
     case "trabajo.estado":
-      // Declared in the vocabulary (§7.6) and deliberately not built yet
-      // — it is seam 6, and it must share the jobs-view parser rather
-      // than grow a second one. `unsupported_op` is exactly the code for
-      // "a valid-looking op this panel version doesn't implement" (§6.5);
-      // answering `capability_denied` would send an author hunting a
-      // manifest bug that isn't there.
-      throw new BridgeError("unsupported_op", "trabajo.estado is not implemented yet");
+      return opTrabajoEstado(ctx, caps["trabajo.estado"]!);
   }
 }
 
@@ -708,6 +702,58 @@ async function opWrite(
 
 function estadoPath(name: string): string {
   return `${trickDataDir(name)}/estado.json`;
+}
+
+/**
+ * `trabajo.estado` — was seam 6, deferred because it needed "the jobs-view
+ * parser" and no jobs view existed yet to define one. Built 2026-08-16
+ * when Mender's own capability request for it started answering
+ * `unsupported_op` in a live deployment, with the raw op name surfacing
+ * as visible UI text — a real defect, not a stub anyone could leave in.
+ *
+ * The registry is the job note itself (`schedule-job` SKILL.md §4):
+ * `job:` frontmatter for schedule/enabled, and an append-only `## Runs`
+ * markdown table for history. This reads both — no second source of
+ * truth, no daemon, no state this process would lose on restart. A job
+ * that was never installed (no note on disk) answers `installed: false`
+ * rather than an error: that is the normal state of a trick's job before
+ * anyone runs `schedule-job` for it, not a failure to report.
+ *
+ * The Runs table is parsed for its **last** row only — trabajo.estado
+ * answers "is this healthy right now", not a history browser. `gray-
+ * matter` already parses `job:` the same way `readTrickManifest` parses
+ * `trick.yaml`'s frontmatter elsewhere in this codebase; the table body
+ * gets a small hand-rolled row scan since it is not YAML.
+ */
+async function opTrabajoEstado(
+  ctx: BridgeContext,
+  cap: NonNullable<TrickCapabilities["trabajo.estado"]>,
+): Promise<unknown> {
+  const rel = `.claude/jobs/${cap.job}.md`;
+  let raw: string;
+  try {
+    raw = await readFile(join(ctx.vaultDir, rel), "utf8");
+  } catch {
+    return { installed: false, enabled: null, schedule: null, lastRun: null };
+  }
+
+  const parsed = matter(raw);
+  const job = (parsed.data as { job?: Record<string, unknown> }).job ?? {};
+  const schedule = typeof job.schedule === "string" ? job.schedule : null;
+  const enabled = typeof job.enabled === "boolean" ? job.enabled : null;
+
+  // Every row under "## Runs" looks like `| <ISO stamp> | <exit code> |
+  // <Ns> |` (schedule-job SKILL.md §3a's runner writes exactly this with
+  // a `printf`). The header row and the `|---|---|---|` separator both
+  // fail the exit-code-is-a-number check below, so no special-casing
+  // them by position is needed — just take the last row that parses.
+  const rowPattern = /^\|\s*([^|]+?)\s*\|\s*(-?\d+)\s*\|\s*([^|]+?)\s*\|\s*$/gm;
+  let lastRun: { when: string; exit: number; duration: string } | null = null;
+  for (const m of parsed.content.matchAll(rowPattern)) {
+    lastRun = { when: m[1]!, exit: Number(m[2]), duration: m[3]! };
+  }
+
+  return { installed: true, enabled, schedule, lastRun };
 }
 
 async function opEstadoGet(ctx: BridgeContext, name: string): Promise<unknown> {

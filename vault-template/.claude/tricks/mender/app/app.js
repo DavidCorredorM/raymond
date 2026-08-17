@@ -56,7 +56,8 @@
       lastRunFailed: function (ts, exitCode) {
         return "last run " + ts + ", FAILED exit " + exitCode;
       },
-      panelTooOld: "this panel version can't report the last run yet",
+      neverRun: "scheduled, hasn't run yet",
+      couldNotCheck: "couldn't check the last run",
       noJobInstalled: "no scheduled run installed — see the mender skill",
       capabilityDenied: function (msg) {
         return "This trick's manifest does not allow that: " + msg;
@@ -116,7 +117,8 @@
       lastRunFailed: function (ts, exitCode) {
         return "última corrida " + ts + ", FALLÓ exit " + exitCode;
       },
-      panelTooOld: "esta versión del panel todavía no reporta la última corrida",
+      neverRun: "programado, todavía no ha corrido",
+      couldNotCheck: "no se pudo revisar la última corrida",
       noJobInstalled: "no hay una corrida programada instalada — ver la skill mender",
       capabilityDenied: function (msg) {
         return "El manifiesto de este truco no permite eso: " + msg;
@@ -199,23 +201,33 @@
     Bridge.call("trabajo.estado", {})
       .then(function (r) {
         if (!r) return;
-        var ok = r.exitCode === 0;
+        // `installed: false` is the normal state before anyone has run
+        // `schedule-job` for this trick yet — not an error, and not the
+        // same question as "installed but hasn't run" (r.lastRun === null
+        // with installed: true), which is also normal for a job that was
+        // just set up. Only a real lastRun gets an ok/failed verdict.
+        if (!r.installed) {
+          elCorrida.textContent = L.noJobInstalled;
+          elCorrida.className = "sutil";
+          return;
+        }
+        if (!r.lastRun) {
+          elCorrida.textContent = L.neverRun;
+          elCorrida.className = "sutil";
+          return;
+        }
+        var ok = r.lastRun.exit === 0;
         elCorrida.textContent = ok
-          ? L.lastRunOk(r.timestamp || "?")
-          : L.lastRunFailed(r.timestamp || "?", r.exitCode);
+          ? L.lastRunOk(r.lastRun.when)
+          : L.lastRunFailed(r.lastRun.when, r.lastRun.exit);
         elCorrida.className = ok ? "sutil" : "sutil malo";
       })
-      .catch(function (err) {
+      .catch(function () {
         // Never leave this blank: a blank space where a timestamp belongs
         // reads as "everything is current", which is the one thing it
         // must not say when the feed may be dead.
-        elCorrida.textContent =
-          err.code === "unsupported_op"
-            // The panel implements trabajo.estado in seam 6 of
-            // panel/docs/tricks-spec.md §13. Until then this is the
-            // honest answer, and it is not the user's problem to fix.
-            ? L.panelTooOld
-            : L.noJobInstalled;
+        elCorrida.textContent = L.couldNotCheck;
+        elCorrida.className = "sutil malo";
       });
   }
 
