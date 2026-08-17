@@ -2676,3 +2676,49 @@ regenerated `steward/index.md` with the new "Mender findings" title and
 wrote a real card, which the running server's live index picked up and
 served correctly through `vault.query` on the bridge — confirming the
 rename didn't disturb the Mender's own read/write path into `steward/`.
+
+## [2026-08-17] Palette swapped a third time: "Solstice" — rust, gold, navy, slate
+
+Signal (cool indigo, the previous swap) was tried live and rejected too:
+"noooo i hate these colors." Rather than mock up another set of options
+and risk a third miss, this one was designed from a real reference the
+owner supplied — a four-swatch image, not a name to interpret — with the
+palette identity picked apart before implementation started: rust
+`#7d3820` and gold `#e6c36c` on the warm side, deep navy `#1a1d46` and
+slate blue `#37487d` on the cool side.
+
+The design decision: light and dark are not the same structure re-tinted
+twice. Light is the warm/day side — a cream ground, rust as the primary
+accent (dark enough to carry text-level contrast on its own), gold
+reserved for washes and secondary fills rather than accent text, since a
+light gold is too close in luminance to a light ground to ever clear
+4.5:1 there. Dark is the cool/night side — the reference navy swatch
+*is* `--bg-raised` directly, and gold becomes the primary accent, now
+glowing rather than muted, because a light warm color against a dark
+cool ground is exactly the contrast direction that works. `--fg` is warm
+parchment in both themes on purpose — the one constant thread tying the
+day and night sides together, rather than inverting to a cold white.
+
+Real audit, not eyeballed: `contrast.test.ts` (reads the shipped
+`styles.css` directly) failed 11 of 83 pairs on the first pass —
+`--warning`/`--kind-web` and `--ok`/`--kind-image` in light (both needed
+darkening against `--bg-sunken`, the tightest surface), `--kind-sheet` in
+dark (needed lightening against `--bg-raised`, the *lightest* dark-mode
+surface — raised chrome pops forward in both themes, so it is the
+binding constraint in opposite directions depending on which theme).
+`--fg-muted` failed too, missed on the first read because it was checked
+against `--bg-raised` alone rather than the full three-surface sweep.
+Fixed each with a real binary search against `contrastRatio()` itself
+(the same function the test calls, not a manual guess-and-rerun loop),
+then reverified every fixed token against all three surfaces, not just
+the one that failed — `--kind-sheet`'s fix needed checking in the
+opposite luminance direction from the light-theme fixes, and doing that
+by eye is exactly how a "looks fine" value ends up wrong on the surface
+nobody thought to check. 83/83 pairs pass now, lowest margin 4.53:1.
+
+Deployed to a local scratch preview (`localhost:8710`, not Angela's
+machine) so the owner could look at the actual rendered app rather than
+a static mockup card — the mockup format is what led to picking Signal
+in the first place and then rejecting it once seen for real. Not yet
+pushed to Angela's deployment; that redeploy is a separate, deliberate
+step once this one is confirmed live rather than mocked up.

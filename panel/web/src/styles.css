@@ -70,52 +70,52 @@
      faintly tinted page), not darker the way the desert palette's raised
      surface was; `--bg-sunken` still means "recessed" and is the darkest
      of the three, same as before. */
-  --bg: #f7f7fb;
+  --bg: #fbf5ea;
   --bg-raised: #ffffff;
-  --bg-sunken: #ececf6;
-  --border: #e3e3ef;
-  --border-strong: #cfcfe3;
+  --bg-sunken: #f0e4cc;
+  --border: #e8d6ae;
+  --border-strong: #d4b876;
 
   /* Ink. `--fg-muted` is the same hue as `--fg`, stopped where it still
      clears 4.5:1 on the *deepest* surface (`--bg-sunken`). */
-  --fg: #1a1b29;
-  --fg-muted: #63637a;
+  --fg: #2a1a10;
+  --fg-muted: #7c6140;
 
   /* Darkened from the mockup's `#5b5bf0` — see the file-level comment,
      this is the accent-on-`--bg-sunken` AA fix. */
-  --accent: #5555ef;
-  --accent-hover: #2f6fed;
+  --accent: #7d3820;
+  --accent-hover: #602a18;
   /* What text on an accent fill must be. */
   --accent-contrast: #ffffff;
   /* A wash of the accent, for a selected row that must not shout. */
-  --accent-wash: #ebebfd;
+  --accent-wash: #f3ddbe;
 
-  --broken: #c02b3c;
-  --warning: #9a5b06;
+  --broken: #b23030;
+  --warning: #8a5e02;
   /* Darkened from `#1a7f4b` — the `--ok`-on-`--bg-sunken` AA fix. */
-  --ok: #197a48;
+  --ok: #447226;
 
   /* Focus. Its own token, not `--accent`: a focus ring is the one thing
      that must stay visible if the accent is ever softened, and it is
      checked at 3:1 against every surface. */
-  --focus: #5555ef;
+  --focus: #7d3820;
 
-  --code-bg: #ececf6;
+  --code-bg: #f0e4cc;
 
   /* File-kind badges (NoteTree). Tokens, so the dark theme can restate
      them and the contrast test can see them. `--kind-sheet` is its own
      darkened blue, not `--accent-hover` — see the file-level comment for
      why the two diverge. */
-  --kind-image: #197a48;
-  --kind-pdf: #c02b3c;
-  --kind-sheet: #1a60eb;
-  --kind-doc: #7a3fa0;
-  --kind-web: #9a5b06;
-  --kind-media: #0e786e;
+  --kind-image: #447226;
+  --kind-pdf: #b23030;
+  --kind-sheet: #37487d;
+  --kind-doc: #1a1d46;
+  --kind-web: #8a5e02;
+  --kind-media: #1f6f68;
 
   /* Transparency backdrop for image previews. */
-  --checker-a: #f7f7fb;
-  --checker-b: #ececf6;
+  --checker-a: #fbf5ea;
+  --checker-b: #f0e4cc;
 
   /* Type. One scale, so nothing picks a size by feel. The body size is
      deliberately larger than the 14px this app started at: the reader is
@@ -137,37 +137,37 @@
        slate) with the same indigo hues sitting on them, lightened until
        each clears AA against them. `--bg-raised` is lighter than `--bg`
        here too, same raised-chrome-pops-forward relationship as light. */
-    --bg: #14141f;
-    --bg-raised: #1d1e2c;
-    --bg-sunken: #0e0e18;
-    --border: #2c2d40;
-    --border-strong: #444661;
+    --bg: #14162e;
+    --bg-raised: #1a1d46;
+    --bg-sunken: #0d0f20;
+    --border: #2e3358;
+    --border-strong: #454b7a;
 
-    --fg: #ededf7;
-    --fg-muted: #9a9ab4;
+    --fg: #f0e6d2;
+    --fg-muted: #9c93b8;
 
-    --accent: #8484ff;
-    --accent-hover: #6fa2ff;
-    --accent-contrast: #0e0e18;
-    --accent-wash: #2c2c4a;
+    --accent: #e6c36c;
+    --accent-hover: #efd48c;
+    --accent-contrast: #1d1204;
+    --accent-wash: #3d3018;
 
-    --broken: #ff8a93;
-    --warning: #e0aa5a;
-    --ok: #7fd6a8;
+    --broken: #ff8f8f;
+    --warning: #e8a050;
+    --ok: #8fc26a;
 
-    --focus: #8484ff;
+    --focus: #e6c36c;
 
-    --code-bg: #0e0e18;
+    --code-bg: #0d0f20;
 
-    --kind-image: #7fd6a8;
-    --kind-pdf: #ff8a93;
-    --kind-sheet: #6fa2ff;
-    --kind-doc: #cf9ef2;
-    --kind-web: #e0aa5a;
-    --kind-media: #5fd0c4;
+    --kind-image: #8fc26a;
+    --kind-pdf: #ff8f8f;
+    --kind-sheet: #7086c8;
+    --kind-doc: #b79ee0;
+    --kind-web: #e8a050;
+    --kind-media: #5cc2ba;
 
-    --checker-a: #1d1e2c;
-    --checker-b: #0e0e18;
+    --checker-a: #1a1d46;
+    --checker-b: #0d0f20;
   }
 }
 

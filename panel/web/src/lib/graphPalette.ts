@@ -33,12 +33,12 @@ export interface GraphPalette {
  * canvas reads as "the graph is broken" rather than "the theme failed".
  */
 export const FALLBACK_GRAPH_PALETTE: GraphPalette = {
-  node: "#5555ef",
-  nodeHighlight: "#2f6fed",
-  label: "#1a1b29",
-  link: "rgba(99, 99, 122, 0.35)",
-  linkHighlight: "rgba(85, 85, 239, 0.85)",
-  linkDim: "rgba(99, 99, 122, 0.08)",
+  node: "#7d3820",
+  nodeHighlight: "#602a18",
+  label: "#2a1a10",
+  link: "rgba(138, 111, 78, 0.35)",
+  linkHighlight: "rgba(125, 56, 32, 0.85)",
+  linkDim: "rgba(138, 111, 78, 0.08)",
 };
 
 /**
