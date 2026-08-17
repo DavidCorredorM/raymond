@@ -200,6 +200,24 @@ def sha1(path: Path) -> str | None:
     return hashlib.sha1(path.read_bytes()).hexdigest()
 
 
+def copy_with_mode(base_file: Path, local_file: Path) -> None:
+    """`write_bytes` alone drops the source's permission bits — the
+    destination gets whatever the umask leaves it, never what the base
+    checkout actually has. Found 2026-08-17 the hard way: `_tools/mender.py`
+    landed on a real deployment as 0644, `_tools/vault-lint` and its other
+    siblings all 0755, and the mender job's own `--allowedTools` grants
+    `Bash(_tools/mender.py:*)` specifically — an exact command-string match
+    that only works if the file is directly executable. Every scheduled run
+    would have failed at step 1, forever, until someone happened to read the
+    log. `os.chmod` after every write, copying the source's exact mode
+    rather than guessing "scripts get +x" from the extension — a mode this
+    script can't predict (a future machinery path might legitimately not be
+    0755) is exactly the kind of guess `docs/roadmap.md` §13 already warns
+    against making per-file."""
+    local_file.write_bytes(base_file.read_bytes())
+    local_file.chmod(base_file.stat().st_mode)
+
+
 def run(cmd: list[str], cwd: Path) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
 
@@ -507,7 +525,7 @@ def resolve_answered(
             if take_upstream and base_path.is_file():
                 if not dry:
                     local_path.parent.mkdir(parents=True, exist_ok=True)
-                    local_path.write_bytes(base_path.read_bytes())
+                    copy_with_mode(base_path, local_path)
                     touched.append(rel)
                 baseline[rel] = sha1(base_path)
                 lines.append(f"conflict card {p.relative_to(vault)}: took upstream, {rel} overwritten")
@@ -581,7 +599,7 @@ def cmd_sync(vault: Path, base: Path, dry: bool) -> int:
             if lh is None:
                 if not dry:
                     local_file.parent.mkdir(parents=True, exist_ok=True)
-                    local_file.write_bytes(base_file.read_bytes())
+                    copy_with_mode(base_file, local_file)
                 updated.append(rel)
                 new_baseline[rel] = bh
                 continue
@@ -591,7 +609,7 @@ def cmd_sync(vault: Path, base: Path, dry: bool) -> int:
             if lb is not None and lh == lb:
                 # unmodified since last sync, base moved — safe
                 if not dry:
-                    local_file.write_bytes(base_file.read_bytes())
+                    copy_with_mode(base_file, local_file)
                 updated.append(rel)
                 new_baseline[rel] = bh
                 continue
@@ -627,7 +645,7 @@ def cmd_sync(vault: Path, base: Path, dry: bool) -> int:
             else:
                 if not dry:
                     local_file.parent.mkdir(parents=True, exist_ok=True)
-                    local_file.write_bytes(base_file.read_bytes())
+                    copy_with_mode(base_file, local_file)
                 seed_filled.append(rel)
             continue
         if bh is not None and lh != bh:

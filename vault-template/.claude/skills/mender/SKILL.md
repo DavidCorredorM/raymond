@@ -311,7 +311,14 @@ The trick declares the schedule; it does not install it. Hand off to
 - **Brief:** `.claude/skills/mender/brief.md`, copied to
   `.claude/jobs/mender.prompt.md`. Do not paste it into the runner
   script; a long brief quoted inside shell is how a job breaks silently
-  six weeks later.
+  six weeks later. **Copy only the content after the first `---`** — the
+  lines above it are instructions for whoever is installing the job, not
+  for the agent, and a plain `cp` sends them too. Found live: the
+  unattended run's first lines of context were "copy this file when
+  schedule-job installs the job," addressed to a human that was never
+  going to read them. The run still worked — it correctly inferred its
+  actual task from what followed — but it is not something the next
+  install should repeat by copying the same way.
 - **Budget and timeout:** a real `--max-budget-usd` and a `timeout`. Both,
   because they fail differently.
 
