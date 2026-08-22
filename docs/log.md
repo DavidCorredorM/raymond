@@ -2722,3 +2722,108 @@ a static mockup card — the mockup format is what led to picking Signal
 in the first place and then rejecting it once seen for real. Not yet
 pushed to Angela's deployment; that redeploy is a separate, deliberate
 step once this one is confirmed live rather than mocked up.
+
+## [2026-08-22] docs/DEPLOYMENT.md and the setup-raymond skill
+
+Nine docs (`00`–`08`) already covered hardware through a running
+`bootstrap.sh`, but nothing tied them into one ordered path, and
+everything past the script — vault shape, UI language, whether the panel
+runs as a standing service — was left as a thing a human had to
+improvise or a thing David did by hand on Angela's box. Two additions:
+
+`docs/DEPLOYMENT.md` — the sequenced walkthrough, linking out to `00`–`08`
+and `panel/deploy/README.md` for depth rather than duplicating them.
+README's "Getting a deployment running" now points here first.
+
+`.claude/skills/setup-raymond/` (in `vault-template/`, so it ships in
+every new vault via `bootstrap.sh`'s skeleton copy) — the interactive
+half. Fires when a fresh vault's `index.md` still says "Nothing here
+yet". Asks three real questions rather than guessing: personal vault or
+one-or-more-companies (and if companies, generalizes the pattern
+`docs/log.md`'s 2026-08-12 entry recorded for Angela — `companies/<slug>/`
+folders, a `company:` frontmatter field as the actual filter, `holding/`
+only if the companies share people or projects); UI language; whether to
+build and enable the panel as a systemd service.
+
+**Found while writing the language-setting step, not yet fixed:** the
+shipped `raymond-panel.service` (`panel/deploy/raymond-panel.service`)
+runs with `ProtectSystem=strict` + `ProtectHome=read-only` and
+`ReadWritePaths=%h/raymond-brain` only. `config.json` resolves to
+`process.cwd()/config.json` (`config.ts`'s `resolveConfigPath`), and the
+unit's `WorkingDirectory` is `%h/raymond/panel/server` — outside the one
+writable path. `writeLanguageSetting` (the settings-endpoint write behind
+roadmap #18, "allows our customers to set their language easily")
+`writeFileSync`s straight to that path. Under the hardened unit as
+shipped, that write should hit `EROFS`, which would mean the one thing
+that feature was explicitly built to let a non-technical owner do from
+the UI silently fails whenever the panel is running as the systemd
+service — exactly the deployment shape it ships for. Not confirmed
+against Angela's actual running unit file (hers may predate the
+hardening lines, or may not be running as this exact unit); flagged to
+the owner rather than changed, since the fix is a real design choice —
+move `config.json`'s default location inside `VAULT_DIR` (already the one
+writable path, and arguably where deployment-mutable config belongs
+regardless of this bug), vs. widening `ReadWritePaths` to include
+`panel/server`, which is a bigger crack in a deliberately hardened unit
+for one file.
+
+## [2026-08-22] Deployment stops assuming Ubuntu server
+
+Caught directly by the owner, watching the previous entry's work happen:
+`docs/DEPLOYMENT.md`, `setup-raymond`, and most of this repo's older
+prose were all written against the one reference deployment (a dedicated
+Ubuntu Server box) and read that way — a session picking this repo up
+cold would confidently give Ubuntu-specific advice on a Mac deployment a
+few turns in, because nothing said otherwise. The ask: the deployment
+flow has to *ask* what machine this is rather than hardcode the answer,
+and the vault/skills/panel genuinely don't care which — only the
+bootstrap mechanics do.
+
+`docs/DEPLOYMENT.md` rewritten with a step 0 that branches three ways
+before anything else: a dedicated box (existing Ubuntu path, renamed
+Path A, unchanged underneath), a Mac already in daily use (Path B), a
+Windows machine (Path C). All three converge back at "finish the vault."
+
+New for Path B: `scripts/bootstrap-macos.sh` (Homebrew instead of apt,
+same idempotent-checks style as `bootstrap.sh`, same vault skeleton
+step) and `panel/deploy/com.raymond.panel.plist` — the launchd
+LaunchAgent equivalent of `raymond-panel.service`, chosen over a
+LaunchDaemon specifically because a Mac someone logs into daily doesn't
+have the "SSH session ends, service dies" problem that motivated
+`loginctl enable-linger` on the headless-server case; noted the
+LaunchDaemon alternative for a Mac that *is* meant to run headless.
+Tailscale on macOS: defaults to the signed app
+(`brew install --cask tailscale-app`), not the bare open-source
+`tailscaled` daemon — Tailscale's own docs mark that variant "for
+experienced administrators running unattended installs," the wrong
+default for a machine someone uses for everything else too.
+
+New for Path C: `docs/09-windows-wsl2.md`. The one part of this that
+isn't just "run the Linux script inside a Linux VM": Tailscale has to
+run on the **Windows host**, never inside WSL2 alongside it — verified
+against `tailscale.com/docs/install/windows/wsl2` (validated
+2025-11-03), which documents that running both at once breaks encrypted
+traffic between them (WSL2's default interface MTU of 1280 can't fit a
+second layer of Tailscale encapsulation). That in turn means the panel
+running inside WSL2 needs a bridge to be reachable from the tailnet at
+all, since Tailscale itself is on the other side of the VM boundary now.
+Documented the two options, in preference order, both verified against
+Microsoft's own WSL docs: mirrored networking mode
+(`networkingMode=mirrored` in `.wslconfig`, Windows 11 22H2+, plus one
+Hyper-V firewall command to allow inbound) makes WSL2 reachable like any
+other LAN device with no forwarding step; `netsh interface portproxy`
+works everywhere else but has to be re-run every WSL2 restart since the
+VM's internal IP isn't stable.
+
+Also fixed, now that they'd actively mislead: `bootstrap.sh`'s header
+comment and its non-apt preflight error (used to just say "This script
+targets Ubuntu/Debian" and stop — now points at the other two paths),
+`setup-raymond`'s step 3 (was systemd-only, now checks `uname` and
+branches), and README's opening paragraph, which literally said "Bare
+hardware → Ubuntu" as the pitch — the exact sentence that would train a
+fresh session into the assumption this entry exists to undo.
+
+Not done: an actual macOS or WSL2 deployment to verify any of this end
+to end — every command above is either mirrored from the already-proven
+Linux script or checked against current official docs (Tailscale's,
+Microsoft's), not run for real. Flagged rather than claimed as verified.

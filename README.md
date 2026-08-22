@@ -1,11 +1,20 @@
 # Raymond
 
-A personal Claude Code appliance. Bare hardware → Ubuntu → a private,
+A personal Claude Code appliance. A machine (bare hardware you dedicate
+to it, or a Mac or Windows box you already use every day) → a private,
 Obsidian-compatible vault → Claude Code with a seeded skill set → a web
 panel to see, edit, dashboard, and script it all, reachable from any
 device on your Tailscale network. Meant to be deployed by different
 people on their own machines, each with their own vault, their own
 skills, their own life in it.
+
+**The machine underneath is not fixed to one OS.** The vault
+(`vault-template/`), its skills, and the panel are the same everywhere —
+only the bootstrap mechanics differ (`apt`/`systemd` vs. `brew`/`launchd`
+vs. WSL2). `docs/DEPLOYMENT.md` starts by asking which machine this is;
+don't assume Ubuntu-server from anything else in this repo, including
+the rest of this file — most of it was written against that one
+reference deployment and hasn't all been generalized yet.
 
 Named for Rain Man's Raymond — a quiet, always-on savant living in the
 background, not a chatbot you summon. Was `Ben` until 2026-08-15, and
@@ -224,18 +233,28 @@ be re-discovered.
 
 ## Getting a deployment running
 
+The quick example below is the Linux path. **`docs/DEPLOYMENT.md` is
+the real starting point** — its step 0 asks what machine this actually
+is (a dedicated Ubuntu/Debian box, a Mac you already use, or a Windows
+machine via WSL2) before assuming anything, since only that first step
+differs; the vault, its skills, and the panel are identical after that.
+
 ```sh
 git clone https://github.com/DavidCorredorM/raymond.git ~/raymond
 cd ~/raymond
-./scripts/bootstrap.sh          # Node, Claude Code, base tooling, vault skeleton
+./scripts/bootstrap.sh          # Linux; ./scripts/bootstrap-macos.sh on a Mac
 cd panel/server && npm install && npx tsc -p tsconfig.json
 cd ../web && npm install && npm run build
 ```
 
-Then the systemd unit in `panel/deploy/`, and `sudo ufw allow in on
-tailscale0 to any port 8710` — never opened to the raw LAN, only the
-tailnet. Full walkthrough: `docs/08-server-setup.md` and
-`panel/deploy/README.md`.
+Then bring the panel up as a standing service (`panel/deploy/README.md`
+— systemd on Linux, launchd on macOS), with `sudo ufw allow in on
+tailscale0 to any port 8710` on Linux specifically — never opened to the
+raw LAN, only the tailnet. `docs/DEPLOYMENT.md` sequences all of this,
+plus `docs/00`–`09`, in the order an actual deployment needs it, ending
+in the `setup-raymond` skill for the choices no bootstrap script can
+make on its own (vault shape, language, whether to run the panel as a
+service).
 
 **The repo is public, read-only to everyone but the maintainer.** Decided
 2026-08-15, deliberately: the alternative was a private repo with a

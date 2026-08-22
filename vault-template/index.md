@@ -20,7 +20,7 @@ cuando-usar: "Empieza aquí. Mapa de todo el vault — léelo antes de buscar a 
 | `panel/` | Dashboards the web panel renders — files with a `widgets:` frontmatter array. `panel/home.md` is the panel's home page. |
 | `_templates/` | Starting points. Copy, never write frontmatter from scratch. |
 | `_tools/` | `vault-search` (tiered search), `vault-lint` (health check), `mender.py` (the full convention sweep). |
-| `.claude/skills/` | Skills Claude Code loads here: capture-note, daily-log, vault-health, mender, migrate-notes, trick-creator, schedule-job, update-raymond. |
+| `.claude/skills/` | Skills Claude Code loads here: setup-raymond, capture-note, daily-log, vault-health, mender, migrate-notes, trick-creator, schedule-job, update-raymond. |
 | `.claude/tricks/` | Mini apps the panel renders over the vault — arbitrary HTML/CSS/JS in a sandboxed frame, reaching the vault only through declared capabilities. Made by `trick-creator`; starters to copy in `_plantillas/`. |
 | `.claude/jobs/` | Scheduled jobs — one note and one runner script each, plus a run log per job. Made by `schedule-job`. |
 

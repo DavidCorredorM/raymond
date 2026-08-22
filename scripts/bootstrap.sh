@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 #
-# Bootstrap a fresh Ubuntu Server install into a second-brain box.
+# Bootstrap Ubuntu or Debian — a dedicated box or a Linux desktop you
+# already use — into a Raymond host. On macOS use ./bootstrap-macos.sh
+# instead; on Windows see docs/09-windows-wsl2.md, then run this script
+# inside WSL2's Ubuntu.
 #
 # Installs base tooling, Tailscale, Node.js and Claude Code, then lays
 # down a vault skeleton. Does NOT authenticate anything — Tailscale and
@@ -32,7 +35,7 @@ if [[ $EUID -eq 0 ]]; then
 fi
 
 if ! command -v apt-get >/dev/null; then
-  echo "This script targets Ubuntu/Debian." >&2
+  echo "This script targets Ubuntu/Debian. On macOS use ./bootstrap-macos.sh; on Windows see docs/09-windows-wsl2.md (then run this script inside WSL2's Ubuntu)." >&2
   exit 1
 fi
 

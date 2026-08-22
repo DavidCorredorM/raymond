@@ -225,11 +225,12 @@ from one folder index to the other, and rolls back if any part fails.
 
 ## Skills
 
-Eight, in `.claude/skills/`. Claude Code loads their descriptions at
+Nine, in `.claude/skills/`. Claude Code loads their descriptions at
 startup and fires them when a task matches:
 
 | Skill | Fires when |
 |---|---|
+| `setup-raymond` | this is a fresh vault (`index.md` still says "Nothing here yet"), or the user asks to finish setup |
 | `capture-note` | something worth keeping was learned |
 | `daily-log` | a session ends |
 | `vault-health` | after an import, or when things feel messy |

@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  launchd equivalent of raymond-panel.service. A per-user LaunchAgent,
+  not a LaunchDaemon: it runs while you're logged in, which is the
+  right model for a Mac you use every day (unlike the headless-server
+  case the systemd unit is written for, there's no SSH session whose
+  end should not take the panel down with it). If this Mac is instead a
+  dedicated, always-on box nobody logs out of, install this as a
+  LaunchDaemon in /Library/LaunchDaemons instead — see
+  panel/deploy/README.md's macOS section for the tradeoff.
+
+  Paths below use a literal $HOME-expanded path because launchd does
+  not expand ~ or $HOME in plist values; panel/deploy/README.md's
+  install steps `sed` the real home directory in before copying this
+  file, the same way the Linux unit relies on systemd's %h.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.raymond.panel</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/env</string>
+    <string>node</string>
+    <string>dist/index.js</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>__HOME__/raymond/panel/server</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>VAULT_DIR</key>
+    <string>__HOME__/raymond-brain</string>
+    <key>PORT</key>
+    <string>8710</string>
+    <key>NODE_ENV</key>
+    <string>production</string>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+
+  <key>StandardOutPath</key>
+  <string>__HOME__/Library/Logs/raymond-panel.log</string>
+  <key>StandardErrorPath</key>
+  <string>__HOME__/Library/Logs/raymond-panel.log</string>
+</dict>
+</plist>
